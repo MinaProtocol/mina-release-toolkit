@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mina Protocol Unstable Debian Repository</title>
+    <meta name="description" content="Unstable Debian repository for Mina Protocol development builds and ad-hoc fixes">
+    <meta name="theme-color" content="#00a9ff">
+    <meta property="og:site_name" content="unstable.apt.packages.minaprotocol.com">
+    <meta property="og:image" content="https://raw.githubusercontent.com/MinaProtocol/mina-resources/refs/heads/main/mina.png">
+    <link rel="shortcut icon" href="https://minaprotocol.com/wp-content/uploads/Favicon-4x.png">
+    <link rel="canonical" href="https://unstable.apt.packages.minaprotocol.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #00a9ff;
+            --secondary-color: #f8fafc;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border-color: #e2e8f0;
+            --code-bg: #f1f5f9;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --unstable-color: #ef4444;
+            --container-max-width: 1200px;
+            --border-radius: 8px;
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background-color: #ffffff;
+        }
+
+        .container {
+            max-width: var(--container-max-width);
+            margin: 0 auto;
+            padding: 0 1.5rem;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            color: var(--text-primary);
+            padding: 3rem 0;
+            text-align: center;
+            border-bottom: 1px solid var(--border-color);
+            position: relative;
+        }
+
+        .header-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+            position: relative;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+        }
+
+        .repo-badge {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: var(--unstable-color);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: var(--border-radius);
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            box-shadow: var(--shadow);
+            transform: rotate(12deg);
+        }
+
+        .repo-badge::before {
+            content: "⚠️";
+            margin-right: 0.25rem;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            letter-spacing: -0.025em;
+        }
+
+        .header p {
+            font-size: 1.125rem;
+            opacity: 0.9;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .unstable-warning {
+            background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+            border: 2px solid var(--unstable-color);
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            margin-top: 1rem;
+            max-width: 700px;
+        }
+
+        .unstable-warning h3 {
+            color: var(--unstable-color);
+            font-size: 1.1rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .unstable-warning p {
+            font-size: 0.95rem;
+            color: #7f1d1d;
+            margin-bottom: 0.5rem;
+        }
+
+        .unstable-warning ul {
+            margin-left: 1.5rem;
+            color: #7f1d1d;
+        }
+
+        .main-content {
+            padding: 3rem 0;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .card-header {
+            background: var(--secondary-color);
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .card-header h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .card-content {
+            padding: 1.5rem;
+        }
+
+        .list {
+            list-style: none;
+        }
+
+        .list li {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+        }
+
+        .list li:last-child {
+            border-bottom: none;
+        }
+
+        .list li::before {
+            content: "✓";
+            color: var(--success-color);
+            font-weight: bold;
+            margin-right: 0.75rem;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+
+        thead {
+            background: var(--secondary-color);
+        }
+
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        tbody tr:hover {
+            background: #f8fafc;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+        }
+
+        .badge-mainnet {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .badge-devnet {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .badge-universal {
+            background: #f3f4f6;
+            color: #374151;
+        }
+
+        .usage-info {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #fef2f2;
+            border-radius: var(--border-radius);
+            border-left: 4px solid var(--unstable-color);
+        }
+
+        .usage-info h4 {
+            color: var(--unstable-color);
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .usage-info p {
+            font-size: 0.9rem;
+            color: #7f1d1d;
+            margin-bottom: 0.5rem;
+        }
+
+        .usage-list {
+            list-style: none;
+            margin-top: 0.5rem;
+        }
+
+        .usage-list li {
+            padding: 0.25rem 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            color: #7f1d1d;
+        }
+
+        .usage-list li::before {
+            content: "•";
+            color: var(--unstable-color);
+            font-weight: bold;
+            margin-top: 0.1rem;
+        }
+
+        .installation-guide {
+            background: white;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+            margin: 2rem 0;
+        }
+
+        .installation-guide h2 {
+            background: var(--secondary-color);
+            padding: 1.5rem;
+            margin: 0;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 1.5rem;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .guide-content {
+            padding: 2rem;
+        }
+
+        .step {
+            margin-bottom: 2rem;
+        }
+
+        .step h3, .step h4 {
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .step h3 {
+            font-size: 1.25rem;
+            display: flex;
+            align-items: center;
+        }
+
+        .step h4 {
+            font-size: 1.125rem;
+            margin-top: 1.5rem;
+        }
+
+        .step-number {
+            background: var(--primary-color);
+            color: white;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            margin-right: 0.75rem;
+            font-size: 0.875rem;
+        }
+
+        .code-block {
+            background: var(--code-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 1rem;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .warning {
+            background: #fef3c7;
+            border: 1px solid #d97706;
+            border-radius: var(--border-radius);
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        .warning strong {
+            color: #92400e;
+        }
+
+        .footer {
+            background: var(--secondary-color);
+            border-top: 1px solid var(--border-color);
+            padding: 2rem 0;
+            text-align: center;
+            margin-top: 3rem;
+        }
+
+        .footer p {
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+
+        .footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+            margin: 0 0.5rem;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 0 1rem;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .logo {
+                width: 60px;
+                height: 60px;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            .guide-content {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div style="position: relative;">
+                    <img src="https://cdn.brandfetch.io/ideSKIgTqj/w/400/h/400/theme/dark/icon.png?c=1bxid64Mup7aczewSAYMX&t=1748059605382" alt="Mina Protocol Logo" class="logo">
+                    <div class="repo-badge">Unstable</div>
+                </div>
+                <div>
+                    <h1>Mina Protocol Unstable Debian Repository</h1>
+                    <p>Development builds and ad-hoc fixes for the Mina development team and external community testing.</p>
+                    <div class="unstable-warning">
+                        <h3>⚠️ Unstable Repository Warning</h3>
+                        <p><strong>This repository is intended for development and testing purposes only.</strong></p>
+                        <ul>
+                            <li>Packages may be experimental or contain bugs</li>
+                            <li>Not recommended for production use</li>
+                            <li>Use at your own risk for testing and development</li>
+                            <li>Packages may be removed or updated without notice</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div class="container">
+            <div class="grid">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Supported Distributions</h3>
+                    </div>
+                    <div class="card-content">
+                        <ul class="list">
+                            <li>Ubuntu Focal (20.04 LTS)</li>
+                            <li>Ubuntu Noble (24.04 LTS)</li>
+                            <li>Debian Bullseye (11)</li>
+                            <li>Debian Bookworm (12)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Available Packages</h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Package</th>
+                                        <th>Network</th>
+                                        <th>Debian Name</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Mina Node</td>
+                                        <td><span class="badge badge-mainnet">Mainnet</span></td>
+                                        <td><code>mina</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Mina Rosetta Node</td>
+                                        <td><span class="badge badge-mainnet">Mainnet</span></td>
+                                        <td><code>mina-rosetta</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Archive Node</td>
+                                        <td><span class="badge badge-universal">Universal</span></td>
+                                        <td><code>mina-archive</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Mina Node</td>
+                                        <td><span class="badge badge-devnet">Devnet</span></td>
+                                        <td><code>mina-devnet</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Mina Rosetta Node</td>
+                                        <td><span class="badge badge-devnet">Devnet</span></td>
+                                        <td><code>mina-rosetta-devnet</code></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="usage-info">
+                            <h4>Repository Purpose</h4>
+                            <p>This unstable repository is designed for:</p>
+                            <ul class="usage-list">
+                                <li>Mina development team internal testing</li>
+                                <li>External community testing of experimental features</li>
+                                <li>Ad-hoc fixes and patches for specific issues</li>
+                                <li>Pre-release builds for validation</li>
+                                <li>Development environment setup</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <section class="installation-guide">
+                <h2>Debian Installation Guide</h2>
+                <div class="guide-content">
+                    <p>To install Mina unstable packages through the APT repository, follow these steps:</p>
+
+                    <div class="step">
+                        <h3><span class="step-number">1</span>Import Debian Key (one-time setup)</h3>
+                        
+                        <p>Create a directory to store APT repository keys if it doesn't exist:</p>
+                        <div class="code-block">sudo install -d -m 0755 /etc/apt/keyrings</div>
+                        
+                        <p>Import the Mina APT repository signing key:</p>
+                        <div class="code-block">wget -q https://unstable.packages.apt.minaprotocol.com/key.asc -O- | sudo tee /etc/apt/keyrings/unstable.packages.apt.minaprotocol.com.asc > /dev/null</div>
+                        
+                        <p>If you don't have wget installed, install it first:</p>
+                        <div class="code-block">sudo apt-get install wget</div>
+                        
+                        <p>Verify the key fingerprint (should be <code>35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3</code>):</p>
+                        <div class="code-block">gpg -n -q --import --import-options import-show /etc/apt/keyrings/unstable.packages.apt.minaprotocol.com.asc | awk '/pub/{getline; gsub(/^ +| +$/,""); if($0 == "35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3") print "\nThe key fingerprint matches ("$0").\n"; else print "\nVerification failed for Mina unstable debian repo: the fingerprint ("$0") does not match the expected one.\n"}'</div>
+                    </div>
+
+                    <div class="step">
+                        <h4><span class="step-number">2</span>Add Mina APT Repository (one-time setup)</h4>
+                        <p>Add the Mina unstable APT repository to your sources list:</p>
+                        <div class="code-block">echo "deb [signed-by=/etc/apt/keyrings/unstable.packages.apt.minaprotocol.com.asc] https://unstable.apt.packages.minaprotocol.com bullseye unstable" | sudo tee -a /etc/apt/sources.list.d/mina.unstable.list > /dev/null</div>
+                    </div>
+
+                    <div class="step">
+                        <h4><span class="step-number">3</span>Prioritize Unstable Repository (one-time setup)</h4>
+                        <p>Configure APT to prioritize packages from the Mina unstable repository:</p>
+                        <div class="code-block">echo 'Package: *
+Pin: origin unstable.packages.apt.minaprotocol.com
+Pin-Priority: 1000
+' | sudo tee /etc/apt/preferences.d/mina-unstable</div>
+                    </div>
+
+                    <div class="step">
+                        <h4><span class="step-number">4</span>Install Mina Package</h4>
+                        <p>Update your package list and install the desired Mina package:</p>
+                        <div class="code-block">sudo apt-get update && sudo apt-get install mina</div>
+                        
+                        <div class="warning">
+                            <strong>Package Selection:</strong> Replace <code>mina</code> with the appropriate package name from the table above (e.g., <code>mina-devnet</code>, <code>mina-archive</code>, <code>mina-rosetta</code>, etc.).
+                            <br><br>
+                            <strong>⚠️ Warning:</strong> Unstable packages are experimental and may cause system instability. Only install on development or testing systems.
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 O1 Labs. All rights reserved.</p>
+            <div style="margin: 1rem 0;">
+                <p>
+                    <a href="https://minaprotocol.com">Official Website</a>
+                    •
+                    <a href="https://github.com/MinaProtocol/mina">GitHub Repository</a>
+                    •
+                    <a href="https://discord.gg/minaprotocol">Discord Community</a>
+                </p>
+            </div>
+            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                <p style="font-size: 0.875rem; color: var(--text-secondary);">
+                    Need help? Join our <a href="https://discord.gg/minaprotocol">Discord community</a> or 
+                    <a href="https://github.com/MinaProtocol/mina/issues">file an issue on GitHub</a>
+                </p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
