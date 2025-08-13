@@ -1,0 +1,205 @@
+name: Test Debian Repositories
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'debian/repositories/**'
+      - '.github/workflows/debian-repositories.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'debian/repositories/**'
+      - '.github/workflows/debian-repositories.yml'
+
+jobs:
+  test-repository-pages:
+    name: Test Repository HTML Pages
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        repository: [stable, nightly, unstable]
+        distro: [ubuntu:20.04, ubuntu:22.04, debian:bullseye]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Test repository page
+      run: |
+        cd debian/repositories
+        chmod +x test_from_html.sh
+        
+        # Test the HTML page with the specified distribution
+        docker run --rm -v $PWD:/workspace -w /workspace ${{ matrix.distro }} bash -c "
+          apt-get update && 
+          apt-get install -y curl gnupg2 software-properties-common wget &&
+          ./test_from_html.sh --html ${{ matrix.repository }}_packages_page.html --distro ${{ matrix.distro }}
+        "
+    
+    - name: Validate HTML syntax
+      run: |
+        cd debian/repositories
+        
+        # Install HTML validator
+        sudo apt-get update
+        sudo apt-get install -y tidy
+        
+        # Validate HTML files
+        for html_file in *.html; do
+          echo "Validating $html_file"
+          tidy -q -e "$html_file" || echo "Warning: HTML validation issues in $html_file"
+        done
+    
+    - name: Check for broken links
+      run: |
+        cd debian/repositories
+        
+        # Install link checker
+        sudo apt-get install -y linkchecker
+        
+        # Check for broken links in HTML files
+        for html_file in *.html; do
+          echo "Checking links in $html_file"
+          linkchecker --check-extern --no-warnings "$html_file" || echo "Warning: Link issues in $html_file"
+        done
+
+  test-installation-commands:
+    name: Test Package Installation Commands
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        repository: [stable, nightly, unstable]
+        distro: [ubuntu:20.04, ubuntu:22.04, debian:bullseye]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Extract and test installation commands
+      run: |
+        cd debian/repositories
+        
+        # Extract installation commands from HTML and test them
+        docker run --rm -v $PWD:/workspace -w /workspace ${{ matrix.distro }} bash -c "
+          apt-get update &&
+          apt-get install -y curl gnupg2 software-properties-common wget grep sed &&
+          
+          # Extract commands from HTML file
+          html_file='${{ matrix.repository }}_packages_page.html'
+          
+          # Extract apt-key and repository setup commands
+          grep -oP '(?<=<code>).*?(?=</code>)' \$html_file > commands.txt || true
+          
+          # Test each command (dry-run where possible)
+          while IFS= read -r cmd; do
+            if [[ \$cmd =~ ^curl.*apt-key ]]; then
+              echo 'Testing key installation: \$cmd'
+              # Test key download without adding to keyring
+              key_url=\$(echo \$cmd | grep -oP '(?<=curl -fsSL ).*?(?= \|)')
+              if [ ! -z \"\$key_url\" ]; then
+                curl -fsSL \"\$key_url\" > /tmp/test_key
+                gpg --dry-run --import /tmp/test_key
+              fi
+            elif [[ \$cmd =~ ^echo.*sources.list ]]; then
+              echo 'Testing repository URL: \$cmd'
+              # Extract and test repository URL accessibility
+              repo_url=\$(echo \$cmd | grep -oP '(?<=deb )[^ ]*')
+              if [ ! -z \"\$repo_url\" ]; then
+                curl -fsSL \"\$repo_url/Release\" > /dev/null || echo 'Warning: Repository URL not accessible'
+              fi
+            fi
+          done < commands.txt
+        "
+
+  validate-readme:
+    name: Validate README Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Check README exists and is up to date
+      run: |
+        cd debian/repositories
+        
+        if [ ! -f README.md ]; then
+          echo "Error: README.md not found in debian/repositories"
+          exit 1
+        fi
+        
+        # Check if README mentions all HTML files
+        for html_file in *.html; do
+          if ! grep -q "$html_file" README.md; then
+            echo "Warning: $html_file not documented in README.md"
+          fi
+        done
+        
+        # Check if test script is documented
+        if ! grep -q "test_from_html.sh" README.md; then
+          echo "Error: test_from_html.sh not documented in README.md"
+          exit 1
+        fi
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Scan HTML files for security issues
+      run: |
+        cd debian/repositories
+        
+        # Check for potential XSS or injection vulnerabilities in HTML
+        echo "Scanning HTML files for security issues..."
+        
+        for html_file in *.html; do
+          echo "Scanning $html_file"
+          
+          # Check for unescaped user input patterns
+          if grep -i "javascript:" "$html_file"; then
+            echo "Warning: Found javascript: URL in $html_file"
+          fi
+          
+          # Check for inline scripts
+          if grep -i "<script" "$html_file"; then
+            echo "Info: Found script tag in $html_file"
+          fi
+          
+          # Check for external resource loading
+          if grep -i "http://" "$html_file"; then
+            echo "Warning: Found HTTP (non-HTTPS) resource in $html_file"
+          fi
+        done
+    
+    - name: Scan shell scripts for security issues
+      run: |
+        cd debian/repositories
+        
+        if [ -f test_from_html.sh ]; then
+          echo "Scanning test_from_html.sh for security issues..."
+          
+          # Check for potential command injection vulnerabilities
+          if grep -P '\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*' test_from_html.sh | grep -v '^#'; then
+            echo "Info: Found variable substitution in shell script"
+          fi
+          
+          # Check for eval usage
+          if grep -i "eval" test_from_html.sh; then
+            echo "Warning: Found eval usage in test_from_html.sh"
+          fi
+          
+          # Check for curl/wget without verification
+          if grep -E "(curl|wget).*-k|--insecure" test_from_html.sh; then
+            echo "Warning: Found insecure HTTP requests in test_from_html.sh"
+          fi
+        fi
