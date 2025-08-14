@@ -215,6 +215,177 @@
             color: #374151;
         }
 
+        .badge-stable {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .badge-beta {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge-alpha {
+            background: #fecaca;
+            color: #991b1b;
+        }
+
+        .release-channels {
+            margin: 3rem 0;
+        }
+
+        .channel-card {
+            background: white;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .channel-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+        }
+
+        .channel-card.stable::before {
+            background: linear-gradient(90deg, #10b981, #059669);
+        }
+
+        .channel-card.beta::before {
+            background: linear-gradient(90deg, #f59e0b, #d97706);
+        }
+
+        .channel-card.alpha::before {
+            background: linear-gradient(90deg, #ef4444, #dc2626);
+        }
+
+        .channel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+        }
+
+        .channel-title {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .channel-title h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 0;
+            color: var(--text-primary);
+        }
+
+        .channel-icon {
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: white;
+        }
+
+        .stable .channel-icon {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .beta .channel-icon {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
+        .alpha .channel-icon {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+
+        .channel-meta {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .meta-item {
+            background: var(--secondary-color);
+            padding: 0.5rem 1rem;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+        }
+
+        .meta-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            font-weight: 600;
+            color: var(--text-secondary);
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+
+        .meta-value {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .channel-description {
+            font-size: 1rem;
+            line-height: 1.7;
+            color: var(--text-primary);
+            margin-bottom: 1.5rem;
+        }
+
+        .channel-highlights {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .highlight {
+            background: var(--code-bg);
+            padding: 1rem;
+            border-radius: var(--border-radius);
+            border-left: 3px solid var(--primary-color);
+        }
+
+        .highlight-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .highlight-content {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .stable .highlight {
+            border-left-color: #10b981;
+        }
+
+        .beta .highlight {
+            border-left-color: #f59e0b;
+        }
+
+        .alpha .highlight {
+            border-left-color: #ef4444;
+        }
+
         .installation-guide {
             background: white;
             border-radius: var(--border-radius);
@@ -341,6 +512,142 @@
                 padding: 1.5rem;
             }
         }
+
+        .versions-section {
+            margin: 3rem 0;
+            background: var(--secondary-color);
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+
+        .versions-header {
+            background: white;
+            padding: 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .versions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 0;
+        }
+
+        .version-card {
+            background: white;
+            padding: 2rem;
+            border-right: 1px solid var(--border-color);
+            position: relative;
+        }
+
+        .version-card:last-child {
+            border-right: none;
+        }
+
+        .version-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+        }
+
+        .version-card.stable::before {
+            background: #10b981;
+        }
+
+        .version-card.beta::before {
+            background: #f59e0b;
+        }
+
+        .version-card.alpha::before {
+            background: #ef4444;
+        }
+
+        .version-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .version-title h4 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 0;
+            color: var(--text-primary);
+        }
+
+        .version-number {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            background: var(--code-bg);
+            padding: 0.5rem 1rem;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+            margin-bottom: 1rem;
+        }
+
+        .install-command {
+            background: #1a1a1a;
+            color: #f8f8f2;
+            padding: 1rem;
+            border-radius: var(--border-radius);
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            margin: 1rem 0;
+            position: relative;
+            overflow-x: auto;
+        }
+
+        .install-command::before {
+            content: '$ ';
+            color: #50fa7b;
+            font-weight: bold;
+        }
+
+        .package-list {
+            list-style: none;
+            margin: 1rem 0;
+            padding: 0;
+        }
+
+        .package-list li {
+            padding: 0.5rem 0;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .package-list li::before {
+            content: '📦';
+            font-size: 0.8rem;
+        }
+
+        .copy-button {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: #44475a;
+            color: #f8f8f2;
+            border: none;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .copy-button:hover {
+            background: #6272a4;
+        }
     </style>
 </head>
 <body>
@@ -403,8 +710,13 @@
                                     </tr>
                                     <tr>
                                         <td>Archive Node</td>
-                                        <td><span class="badge badge-universal">Universal</span></td>
+                                        <td><span class="badge badge-mainnet">Mainnet</span></td>
                                         <td><code>mina-archive</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Archive Node</td>
+                                        <td><span class="badge badge-devnet">Devnet</span></td>
+                                        <td><code>mina-archive-devnet</code></td>
                                     </tr>
                                     <tr>
                                         <td>Mina Node</td>
@@ -422,6 +734,200 @@
                     </div>
                 </div>
             </div>
+
+            <section class="release-channels">
+                <div class="container">
+                    <div style="text-align: center; margin-bottom: 3rem;">
+                        <h2 style="font-size: 2rem; font-weight: 700; margin-bottom: 1rem; color: var(--text-primary);">Release Channels</h2>
+                        <p style="font-size: 1.125rem; color: var(--text-secondary); max-width: 600px; margin: 0 auto;">Choose the right channel for your deployment needs, from production-ready stable releases to cutting-edge development builds.</p>
+                    </div>
+
+                    <div class="channel-card stable">
+                        <div class="channel-header">
+                            <div class="channel-title">
+                                <div class="channel-icon">✓</div>
+                                <h3>Stable</h3>
+                                <span class="badge badge-stable">Production Ready</span>
+                            </div>
+                        </div>
+                        <div class="channel-meta">
+                            <div class="meta-item">
+                                <div class="meta-label">Target Network</div>
+                                <div class="meta-value">Mainnet</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Risk Level</div>
+                                <div class="meta-value">Minimal</div>
+                            </div>
+                        </div>
+                        <div class="channel-description">
+                            <strong>Battle-tested releases with enterprise-grade reliability.</strong> These packages represent the gold standard for Mina Protocol deployments, having undergone extensive validation across multiple environments, comprehensive security audits, and thorough community testing. Each release includes formal verification, performance benchmarks, and complete documentation.
+                        </div>
+                        <div class="channel-highlights">
+                            <div class="highlight">
+                                <div class="highlight-title">🏛️ Production Use</div>
+                                <div class="highlight-content">Recommended for mainnet validators, block producers, and mission-critical infrastructure</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">🔒 Security Audited</div>
+                                <div class="highlight-content">Full security review with cryptographic validation and penetration testing</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">📋 Migration Support</div>
+                                <div class="highlight-content">Comprehensive upgrade guides with backward compatibility guarantees</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">⚡ Performance Optimized</div>
+                                <div class="highlight-content">Optimized for throughput, memory usage, and network efficiency</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="channel-card beta">
+                        <div class="channel-header">
+                            <div class="channel-title">
+                                <div class="channel-icon">β</div>
+                                <h3>Beta</h3>
+                                <span class="badge badge-beta">Release Candidate</span>
+                            </div>
+                        </div>
+                        <div class="channel-meta">
+                            <div class="meta-item">
+                                <div class="meta-label">Target Network</div>
+                                <div class="meta-value">Mainnet</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Risk Level</div>
+                                <div class="meta-value">Low</div>
+                            </div>
+                        </div>
+                        <div class="channel-description">
+                            <strong>Pre-production releases for early adopters.</strong> These packages are promoted from alpha after successful devnet validation and represent feature-complete implementations ready for final testing. Ideal for organizations that want to evaluate upcoming features and provide feedback before stable release.
+                        </div>
+                        <div class="channel-highlights">
+                            <div class="highlight">
+                                <div class="highlight-title">🚀 Early Access</div>
+                                <div class="highlight-content">First access to new features and protocol improvements</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">🧪 Testing Focus</div>
+                                <div class="highlight-content">Suitable for mainnet testing environments and staging deployments</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">📊 Performance Data</div>
+                                <div class="highlight-content">Help collect real-world performance metrics and edge case scenarios</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">🔄 Regular Updates</div>
+                                <div class="highlight-content">Frequent updates with bug fixes and feature refinements</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="channel-card alpha">
+                        <div class="channel-header">
+                            <div class="channel-title">
+                                <div class="channel-icon">α</div>
+                                <h3>Alpha</h3>
+                                <span class="badge badge-alpha">Early Testing</span>
+                            </div>
+                        </div>
+                        <div class="channel-meta">
+                            <div class="meta-item">
+                                <div class="meta-label">Target Network</div>
+                                <div class="meta-value">Devnet</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Risk Level</div>
+                                <div class="meta-value">Medium</div>
+                            </div>
+                        </div>
+                        <div class="channel-description">
+                            <strong>Cutting-edge development builds for research and testing.</strong> These packages contain the latest experimental features, protocol changes, and performance optimizations. Essential for protocol researchers, core developers, and community members contributing to Mina's evolution. <em>Not suitable for production use.</em>
+                        </div>
+                        <div class="channel-highlights">
+                            <div class="highlight">
+                                <div class="highlight-title">🔬 Research Focus</div>
+                                <div class="highlight-content">Experimental consensus mechanisms and cryptographic improvements</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">⚠️ Known Issues</div>
+                                <div class="highlight-content">May contain bugs and breaking changes - use with caution</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">🏗️ Protocol Development</div>
+                                <div class="highlight-content">Test new protocol features and network upgrade mechanisms</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">👥 Community Testing</div>
+                                <div class="highlight-content">Help validate features before promotion to beta channel</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="versions-section">
+                <div class="versions-header">
+                    <h2 style="font-size: 2rem; font-weight: 700; margin-bottom: 1rem; color: var(--text-primary);">Latest Versions</h2>
+                    <p style="font-size: 1.125rem; color: var(--text-secondary); max-width: 600px; margin: 0 auto;">Current release versions available for each channel with installation commands.</p>
+                </div>
+                <div class="versions-grid">
+                    <div class="version-card stable">
+                        <div class="version-title">
+                            <div class="channel-icon" style="width: 2rem; height: 2rem; font-size: 1rem;">✓</div>
+                            <h4>Stable</h4>
+                            <span class="badge badge-stable">Production</span>
+                        </div>
+                        <div class="version-number">v3.1.0</div>
+                        <div class="install-command">sudo apt-get update && sudo apt-get install mina=3.1.0*
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('sudo apt-get update && sudo apt-get install mina=3.1.0*')">Copy</button>
+                        </div>
+                        <ul class="package-list">
+                            <li>mina=3.1.0* - Mainnet node</li>
+                            <li>mina-devnet=3.1.0* - Devnet node</li>
+                            <li>mina-archive=3.1.0* - Archive node</li>
+                            <li>mina-rosetta=3.1.0* - Rosetta API</li>
+                        </ul>
+                    </div>
+
+                    <div class="version-card beta">
+                        <div class="version-title">
+                            <div class="channel-icon" style="width: 2rem; height: 2rem; font-size: 1rem;">β</div>
+                            <h4>Beta</h4>
+                            <span class="badge badge-beta">Release Candidate</span>
+                        </div>
+                        <div class="version-number">v3.2.0-beta2</div>
+                        <div class="install-command">sudo apt-get update && sudo apt-get install mina=3.2.0-beta2*
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('sudo apt-get update && sudo apt-get install mina=3.2.0-beta2*')">Copy</button>
+                        </div>
+                        <ul class="package-list">
+                            <li>mina=3.2.0-beta2* - Mainnet node (beta)</li>
+                            <li>mina-devnet=3.2.0-beta2* - Devnet node (beta)</li>
+                            <li>mina-archive=3.2.0-beta2* - Archive node (beta)</li>
+                            <li>mina-rosetta=3.2.0-beta2* - Rosetta API (beta)</li>
+                        </ul>
+                    </div>
+
+                    <div class="version-card alpha">
+                        <div class="version-title">
+                            <div class="channel-icon" style="width: 2rem; height: 2rem; font-size: 1rem;">α</div>
+                            <h4>Alpha</h4>
+                            <span class="badge badge-alpha">Early Testing</span>
+                        </div>
+                        <div class="version-number">v3.2.0-alpha1</div>
+                        <div class="install-command">sudo apt-get update && sudo apt-get install mina=3.2.0-alpha1*
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('sudo apt-get update && sudo apt-get install mina=3.2.0-alpha1*')">Copy</button>
+                        </div>
+                        <ul class="package-list">
+                            <li>mina=3.2.0-alpha1* - Mainnet node (alpha)</li>
+                            <li>mina-devnet=3.2.0-alpha1* - Devnet node (alpha)</li>
+                            <li>mina-archive=3.2.0-alpha1* - Archive node (alpha)</li>
+                            <li>mina-rosetta=3.2.0-alpha1* - Rosetta API (alpha)</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
 
             <section class="installation-guide">
                 <h2>Debian Installation Guide</h2>

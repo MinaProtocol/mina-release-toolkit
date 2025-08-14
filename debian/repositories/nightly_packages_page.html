@@ -403,6 +403,313 @@
                 padding: 1.5rem;
             }
         }
+
+        .release-channels {
+            margin: 3rem 0;
+        }
+
+        .channel-card {
+            background: white;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .channel-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+        }
+
+        .channel-card.compatible::before {
+            background: linear-gradient(90deg, #10b981, #059669);
+        }
+
+        .channel-card.master::before {
+            background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+        }
+
+        .channel-card.develop::before {
+            background: linear-gradient(90deg, #ef4444, #dc2626);
+        }
+
+        .channel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+        }
+
+        .channel-title {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .channel-title h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 0;
+            color: var(--text-primary);
+        }
+
+        .channel-icon {
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: white;
+        }
+
+        .compatible .channel-icon {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .master .channel-icon {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        }
+
+        .develop .channel-icon {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+
+        .channel-meta {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .meta-item {
+            background: var(--secondary-color);
+            padding: 0.5rem 1rem;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+        }
+
+        .meta-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            font-weight: 600;
+            color: var(--text-secondary);
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+
+        .meta-value {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .channel-description {
+            font-size: 1rem;
+            line-height: 1.7;
+            color: var(--text-primary);
+            margin-bottom: 1.5rem;
+        }
+
+        .channel-highlights {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .highlight {
+            background: var(--code-bg);
+            padding: 1rem;
+            border-radius: var(--border-radius);
+            border-left: 3px solid var(--primary-color);
+        }
+
+        .highlight-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .highlight-content {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .compatible .highlight {
+            border-left-color: #10b981;
+        }
+
+        .master .highlight {
+            border-left-color: #3b82f6;
+        }
+
+        .develop .highlight {
+            border-left-color: #ef4444;
+        }
+
+        .badge-compatible {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .badge-master {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .badge-develop {
+            background: #fecaca;
+            color: #991b1b;
+        }
+
+        .versions-section {
+            margin: 3rem 0;
+            background: var(--secondary-color);
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+
+        .versions-header {
+            background: white;
+            padding: 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .versions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 0;
+        }
+
+        .version-card {
+            background: white;
+            padding: 2rem;
+            border-right: 1px solid var(--border-color);
+            position: relative;
+        }
+
+        .version-card:last-child {
+            border-right: none;
+        }
+
+        .version-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+        }
+
+        .version-card.compatible::before {
+            background: #10b981;
+        }
+
+        .version-card.master::before {
+            background: #3b82f6;
+        }
+
+        .version-card.develop::before {
+            background: #ef4444;
+        }
+
+        .version-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .version-title h4 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 0;
+            color: var(--text-primary);
+        }
+
+        .version-number {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            background: var(--code-bg);
+            padding: 0.5rem 1rem;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+            margin-bottom: 1rem;
+        }
+
+        .install-command {
+            background: #1a1a1a;
+            color: #f8f8f2;
+            padding: 1rem;
+            border-radius: var(--border-radius);
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            margin: 1rem 0;
+            position: relative;
+            overflow-x: auto;
+        }
+
+        .install-command::before {
+            content: '$ ';
+            color: #50fa7b;
+            font-weight: bold;
+        }
+
+        .package-list {
+            list-style: none;
+            margin: 1rem 0;
+            padding: 0;
+        }
+
+        .package-list li {
+            padding: 0.5rem 0;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .package-list li::before {
+            content: '📦';
+            font-size: 0.8rem;
+        }
+
+        .copy-button {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: #44475a;
+            color: #f8f8f2;
+            border: none;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .copy-button:hover {
+            background: #6272a4;
+        }
     </style>
 </head>
 <body>
@@ -419,8 +726,8 @@
                     <div class="nightly-info">
                         <h3>🌙 Nightly Package Information</h3>
                         <p>Packages include build date in version format:</p>
-                        <div class="version-example">3.2.0-20250720</div>
-                        <p><small>where 3.2.0 is the latest version and 20250720 is the date (YYYYMMDD)</small></p>
+                        <div class="version-example">3.2.0-<span id="header-date"></span></div>
+                        <p><small>where 3.2.0 is the latest version and <span id="header-date-text"></span> is the date (YYYYMMDD)</small></p>
                     </div>
                 </div>
             </div>
@@ -497,17 +804,212 @@
                                 </tbody>
                             </table>
                         </div>
-                        <div class="channel-description">
-                            <h4>Channel Descriptions:</h4>
-                            <ul class="channel-list">
-                                <li><strong>Master:</strong> Most stable nightly with critical security fixes only. Changes infrequently.</li>
-                                <li><strong>Compatible:</strong> Unreleased but mainnet-compatible versions. No hardfork required for upgrade.</li>
-                                <li><strong>Develop:</strong> Latest development versions. May be incompatible with mainnet and require hardfork.</li>
-                            </ul>
-                        </div>
                     </div>
                 </div>
             </div>
+
+            <section class="release-channels">
+                <div class="container">
+                    <div style="text-align: center; margin-bottom: 3rem;">
+                        <h2 style="font-size: 2rem; font-weight: 700; margin-bottom: 1rem; color: var(--text-primary);">Nightly Release Channels</h2>
+                        <p style="font-size: 1.125rem; color: var(--text-secondary); max-width: 700px; margin: 0 auto;">Choose from compatible builds, critical patch releases, or cutting-edge development builds with the latest features.</p>
+                    </div>
+
+                    <div class="channel-card compatible">
+                        <div class="channel-header">
+                            <div class="channel-title">
+                                <div class="channel-icon">⚡</div>
+                                <h3>Compatible</h3>
+                                <span class="badge badge-compatible">Network Compatible</span>
+                            </div>
+                        </div>
+                        <div class="channel-meta">
+                            <div class="meta-item">
+                                <div class="meta-label">Network Compatibility</div>
+                                <div class="meta-value">Full</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Hardfork Required</div>
+                                <div class="meta-value">No</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Risk Level</div>
+                                <div class="meta-value">Low</div>
+                            </div>
+                        </div>
+                        <div class="channel-description">
+                            <strong>Network-compatible nightly builds for safe testing.</strong> These packages are fully compatible with the current mainnet and devnet networks without requiring any hardfork or protocol changes. Perfect for testing new features while maintaining full network compatibility and ensuring seamless upgrades.
+                        </div>
+                        <div class="channel-highlights">
+                            <div class="highlight">
+                                <div class="highlight-title">🔗 Network Compatible</div>
+                                <div class="highlight-content">Works with current mainnet and devnet without protocol changes</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">🚀 New Features</div>
+                                <div class="highlight-content">Latest performance improvements and feature additions</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">🔄 Seamless Upgrade</div>
+                                <div class="highlight-content">Drop-in replacement for stable versions without migration</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">📈 Production Testing</div>
+                                <div class="highlight-content">Safe for testing in production-like environments</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="channel-card master">
+                        <div class="channel-header">
+                            <div class="channel-title">
+                                <div class="channel-icon">🛡️</div>
+                                <h3>Master</h3>
+                                <span class="badge badge-master">Critical Patches</span>
+                            </div>
+                        </div>
+                        <div class="channel-meta">
+                            <div class="meta-item">
+                                <div class="meta-label">Patch Type</div>
+                                <div class="meta-value">Critical</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Network Target</div>
+                                <div class="meta-value">Current</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Risk Level</div>
+                                <div class="meta-value">Medium</div>
+                            </div>
+                        </div>
+                        <div class="channel-description">
+                            <strong>Critical early-access patches for current networks.</strong> These packages contain important security fixes, critical bug patches, and urgent updates that need early testing before being promoted to stable releases. Designed for current mainnet and devnet networks, providing essential fixes while maintaining network compatibility.
+                        </div>
+                        <div class="channel-highlights">
+                            <div class="highlight">
+                                <div class="highlight-title">🛡️ Security Patches</div>
+                                <div class="highlight-content">Critical security fixes and vulnerability patches</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">⚡ Urgent Fixes</div>
+                                <div class="highlight-content">Important bug fixes for current network issues</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">📊 Early Testing</div>
+                                <div class="highlight-content">Test critical patches before stable release</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">🎯 Current Networks</div>
+                                <div class="highlight-content">Targeted for existing mainnet and devnet infrastructure</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="channel-card develop">
+                        <div class="channel-header">
+                            <div class="channel-title">
+                                <div class="channel-icon">⚗️</div>
+                                <h3>Develop</h3>
+                                <span class="badge badge-develop">Experimental</span>
+                            </div>
+                        </div>
+                        <div class="channel-meta">
+                            <div class="meta-item">
+                                <div class="meta-label">Network Compatibility</div>
+                                <div class="meta-value">Limited</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Hardfork Required</div>
+                                <div class="meta-value">Possible</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Risk Level</div>
+                                <div class="meta-value">High</div>
+                            </div>
+                        </div>
+                        <div class="channel-description">
+                            <strong>Cutting-edge development builds with potential breaking changes.</strong> These packages contain the latest experimental features and protocol modifications that may not be compatible with current mainnet or devnet networks. They might require hardfork upgrades and should only be used in isolated testing environments. <em>Not recommended for production use.</em>
+                        </div>
+                        <div class="channel-highlights">
+                            <div class="highlight">
+                                <div class="highlight-title">🧪 Experimental Features</div>
+                                <div class="highlight-content">Latest protocol changes and experimental consensus mechanisms</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">⚠️ Breaking Changes</div>
+                                <div class="highlight-content">May be incompatible with current networks and require hardfork</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">🔬 Research Focus</div>
+                                <div class="highlight-content">Advanced cryptographic improvements and protocol research</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">🏗️ Future Protocol</div>
+                                <div class="highlight-content">Preview of upcoming protocol versions and network upgrades</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="versions-section">
+                <div class="versions-header">
+                    <h2 style="font-size: 2rem; font-weight: 700; margin-bottom: 1rem; color: var(--text-primary);">Latest Nightly Versions</h2>
+                    <p style="font-size: 1.125rem; color: var(--text-secondary); max-width: 600px; margin: 0 auto;">Current nightly builds with date-based versioning for each channel.</p>
+                </div>
+                <div class="versions-grid">
+                    <div class="version-card compatible">
+                        <div class="version-title">
+                            <div class="channel-icon" style="width: 2rem; height: 2rem; font-size: 1rem;">⚡</div>
+                            <h4>Compatible</h4>
+                            <span class="badge badge-compatible">Network Safe</span>
+                        </div>
+                        <div class="version-number">v3.2.0-alpha1-<span id="compatible-date"></span></div>
+                        <div class="install-command">sudo apt-get update && sudo apt-get install mina-compatible
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('sudo apt-get update && sudo apt-get install mina-compatible')">Copy</button>
+                        </div>
+                        <ul class="package-list">
+                            <li>mina-compatible - Compatible mainnet node</li>
+                            <li>mina-rosetta-compatible - Compatible Rosetta API</li>
+                            <li>mina-archive - Archive node (universal)</li>
+                        </ul>
+                    </div>
+
+                    <div class="version-card master">
+                        <div class="version-title">
+                            <div class="channel-icon" style="width: 2rem; height: 2rem; font-size: 1rem;">🛡️</div>
+                            <h4>Master</h4>
+                            <span class="badge badge-master">Critical Patches</span>
+                        </div>
+                        <div class="version-number">v3.1.0-<span id="master-date"></span></div>
+                        <div class="install-command">sudo apt-get update && sudo apt-get install mina
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('sudo apt-get update && sudo apt-get install mina')">Copy</button>
+                        </div>
+                        <ul class="package-list">
+                            <li>mina - Master channel mainnet node</li>
+                            <li>mina-rosetta - Master channel Rosetta API</li>
+                            <li>mina-archive - Archive node (universal)</li>
+                        </ul>
+                    </div>
+
+                    <div class="version-card develop">
+                        <div class="version-title">
+                            <div class="channel-icon" style="width: 2rem; height: 2rem; font-size: 1rem;">⚗️</div>
+                            <h4>Develop</h4>
+                            <span class="badge badge-develop">Experimental</span>
+                        </div>
+                        <div class="version-number">v3.2.0-alpha1-<span id="develop-date"></span></div>
+                        <div class="install-command">sudo apt-get update && sudo apt-get install mina-develop
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('sudo apt-get update && sudo apt-get install mina-develop')">Copy</button>
+                        </div>
+                        <ul class="package-list">
+                            <li>mina-develop - Development mainnet node</li>
+                            <li>mina-rosetta-develop - Development Rosetta API</li>
+                            <li>mina-archive - Archive node (universal)</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
 
             <section class="installation-guide">
                 <h2>Debian Installation Guide</h2>
@@ -550,16 +1052,6 @@ Pin-Priority: 1000
                         <p>Update your package list and install the desired Mina package:</p>
                         <div class="code-block">sudo apt-get update && sudo apt-get install mina</div>
                         
-                        <div class="warning">
-                            <strong>Channel Selection:</strong> Replace <code>mina</code> with the appropriate package name:
-                            <ul style="margin-top: 0.5rem;">
-                                <li><code>mina</code> - Master channel (most stable)</li>
-                                <li><code>mina-compatible</code> - Compatible channel</li>
-                                <li><code>mina-develop</code> - Development channel</li>
-                                <li><code>mina-rosetta</code>, <code>mina-rosetta-compatible</code>, <code>mina-rosetta-develop</code> - Rosetta variants</li>
-                                <li><code>mina-archive</code> - Archive node (all channels)</li>
-                            </ul>
-                        </div>
                     </div>
                 </div>
             </section>
@@ -586,5 +1078,36 @@ Pin-Priority: 1000
             </div>
         </div>
     </footer>
+
+    <script>
+        // Generate current date in YYYYMMDD format
+        function getCurrentDateString() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            return year + month + day;
+        }
+
+        // Populate all date placeholders
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentDate = getCurrentDateString();
+            
+            // Update header example
+            const headerDate = document.getElementById('header-date');
+            const headerDateText = document.getElementById('header-date-text');
+            if (headerDate) headerDate.textContent = currentDate;
+            if (headerDateText) headerDateText.textContent = currentDate;
+            
+            // Update version cards
+            const compatibleDate = document.getElementById('compatible-date');
+            const masterDate = document.getElementById('master-date');
+            const developDate = document.getElementById('develop-date');
+            
+            if (compatibleDate) compatibleDate.textContent = currentDate;
+            if (masterDate) masterDate.textContent = currentDate;
+            if (developDate) developDate.textContent = currentDate;
+        });
+    </script>
 </body>
 </html>

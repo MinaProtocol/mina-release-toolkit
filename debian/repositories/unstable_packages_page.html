@@ -428,14 +428,34 @@
                     <h1>Mina Protocol Unstable Debian Repository</h1>
                     <p>Development builds and ad-hoc fixes for the Mina development team and external community testing.</p>
                     <div class="unstable-warning">
-                        <h3>⚠️ Unstable Repository Warning</h3>
-                        <p><strong>This repository is intended for development and testing purposes only.</strong></p>
-                        <ul>
-                            <li>Packages may be experimental or contain bugs</li>
-                            <li>Not recommended for production use</li>
-                            <li>Use at your own risk for testing and development</li>
-                            <li>Packages may be removed or updated without notice</li>
-                        </ul>
+                        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+                            <div style="background: var(--unstable-color); color: white; width: 3rem; height: 3rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold;">⚠️</div>
+                            <h3 style="margin: 0; font-size: 1.25rem; color: var(--unstable-color);">Critical Warning: Unstable Repository</h3>
+                        </div>
+                        <div style="background: #ffffff; padding: 1.5rem; border-radius: var(--border-radius); border: 1px solid var(--unstable-color); margin-bottom: 1rem;">
+                            <p style="font-size: 1rem; font-weight: 600; color: #7f1d1d; margin-bottom: 1rem;"><strong>This repository contains highly experimental packages for development and testing purposes only.</strong></p>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+                                <div style="background: #fef2f2; padding: 1rem; border-radius: 6px; border-left: 3px solid var(--unstable-color);">
+                                    <h4 style="color: var(--unstable-color); font-size: 0.9rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">🚫 Production Risk</h4>
+                                    <p style="font-size: 0.85rem; color: #7f1d1d; margin: 0;">Not suitable for production environments. May cause system instability.</p>
+                                </div>
+                                <div style="background: #fef2f2; padding: 1rem; border-radius: 6px; border-left: 3px solid var(--unstable-color);">
+                                    <h4 style="color: var(--unstable-color); font-size: 0.9rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">🔄 Volatile Channels</h4>
+                                    <p style="font-size: 0.85rem; color: #7f1d1d; margin: 0;">Channels are not guaranteed to be long-lived and may change without notice.</p>
+                                </div>
+                                <div style="background: #fef2f2; padding: 1rem; border-radius: 6px; border-left: 3px solid var(--unstable-color);">
+                                    <h4 style="color: var(--unstable-color); font-size: 0.9rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">🐛 Experimental Code</h4>
+                                    <p style="font-size: 0.85rem; color: #7f1d1d; margin: 0;">Contains untested features, bugs, and breaking changes.</p>
+                                </div>
+                                <div style="background: #fef2f2; padding: 1rem; border-radius: 6px; border-left: 3px solid var(--unstable-color);">
+                                    <h4 style="color: var(--unstable-color); font-size: 0.9rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">📞 Development Team</h4>
+                                    <p style="font-size: 0.85rem; color: #7f1d1d; margin: 0;">Always consult Mina Protocol development team for current information.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="background: var(--unstable-color); color: white; padding: 1rem; border-radius: var(--border-radius); text-align: center; border: 2px solid #dc2626; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+                            <p style="margin: 0; font-size: 1rem; font-weight: 700; text-shadow: 1px 1px 2px rgba(0,0,0,0.3);">⚡ Use only in isolated testing environments with full understanding of risks ⚡</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -486,8 +506,13 @@
                                     </tr>
                                     <tr>
                                         <td>Archive Node</td>
-                                        <td><span class="badge badge-universal">Universal</span></td>
+                                        <td><span class="badge badge-mainnet">Mainnet</span></td>
                                         <td><code>mina-archive</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Archive Node</td>
+                                        <td><span class="badge badge-devnet">Devnet</span></td>
+                                        <td><code>mina-archive-devnet</code></td>
                                     </tr>
                                     <tr>
                                         <td>Mina Node</td>
@@ -502,20 +527,72 @@
                                 </tbody>
                             </table>
                         </div>
-                        <div class="usage-info">
-                            <h4>Repository Purpose</h4>
-                            <p>This unstable repository is designed for:</p>
-                            <ul class="usage-list">
-                                <li>Mina development team internal testing</li>
-                                <li>External community testing of experimental features</li>
-                                <li>Ad-hoc fixes and patches for specific issues</li>
-                                <li>Pre-release builds for validation</li>
-                                <li>Development environment setup</li>
-                            </ul>
-                        </div>
                     </div>
                 </div>
             </div>
+
+            <section style="margin: 3rem 0;">
+                <div class="container">
+                    <div style="text-align: center; margin-bottom: 3rem;">
+                        <h2 style="font-size: 2rem; font-weight: 700; margin-bottom: 1rem; color: var(--text-primary);">Repository Purpose</h2>
+                        <p style="font-size: 1.125rem; color: var(--text-secondary); max-width: 700px; margin: 0 auto;">Experimental package delivery for development, testing, and community validation of unstable Mina Protocol builds.</p>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem;">
+                        <div style="background: white; border-radius: var(--border-radius); border: 1px solid var(--border-color); box-shadow: var(--shadow); padding: 2rem; position: relative; overflow: hidden;">
+                            <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, var(--unstable-color), #dc2626);"></div>
+                            <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+                                <div style="background: linear-gradient(135deg, var(--unstable-color), #dc2626); color: white; width: 2.5rem; height: 2.5rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: bold;">🔬</div>
+                                <h3 style="font-size: 1.25rem; font-weight: 700; margin: 0; color: var(--text-primary);">Development Testing</h3>
+                            </div>
+                            <p style="font-size: 1rem; line-height: 1.7; color: var(--text-primary); margin-bottom: 1.5rem;">
+                                <strong>Internal development team validation and testing.</strong> Provides early access to experimental features, protocol changes, and critical patches before they mature into stable releases.
+                            </p>
+                            <div style="display: grid; gap: 1rem;">
+                                <div style="background: var(--code-bg); padding: 1rem; border-radius: var(--border-radius); border-left: 3px solid var(--unstable-color);">
+                                    <div style="font-size: 0.875rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">🧪 Experimental Features</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">Test cutting-edge protocol improvements and consensus mechanisms</div>
+                                </div>
+                                <div style="background: var(--code-bg); padding: 1rem; border-radius: var(--border-radius); border-left: 3px solid var(--unstable-color);">
+                                    <div style="font-size: 0.875rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">🚑 Critical Patches</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">Ad-hoc fixes for urgent issues and security vulnerabilities</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="background: white; border-radius: var(--border-radius); border: 1px solid var(--border-color); box-shadow: var(--shadow); padding: 2rem; position: relative; overflow: hidden;">
+                            <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, var(--unstable-color), #dc2626);"></div>
+                            <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+                                <div style="background: linear-gradient(135deg, var(--unstable-color), #dc2626); color: white; width: 2.5rem; height: 2.5rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: bold;">👥</div>
+                                <h3 style="font-size: 1.25rem; font-weight: 700; margin: 0; color: var(--text-primary);">Community Validation</h3>
+                            </div>
+                            <p style="font-size: 1rem; line-height: 1.7; color: var(--text-primary); margin-bottom: 1.5rem;">
+                                <strong>External community testing and feedback collection.</strong> Enables advanced users and researchers to validate experimental features and provide crucial feedback for protocol development.
+                            </p>
+                            <div style="display: grid; gap: 1rem;">
+                                <div style="background: var(--code-bg); padding: 1rem; border-radius: var(--border-radius); border-left: 3px solid var(--unstable-color);">
+                                    <div style="font-size: 0.875rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">🔍 Pre-release Validation</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">Community testing before promotion to beta or stable channels</div>
+                                </div>
+                                <div style="background: var(--code-bg); padding: 1rem; border-radius: var(--border-radius); border-left: 3px solid var(--unstable-color);">
+                                    <div style="font-size: 0.875rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">💻 Development Environment</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">Setup isolated testing environments for advanced development work</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="background: #fef2f2; border: 2px solid var(--unstable-color); border-radius: var(--border-radius); padding: 2rem; margin-top: 2rem; text-align: center;">
+                        <h3 style="color: var(--unstable-color); font-size: 1.1rem; margin-bottom: 1rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">📢 Important Notice</h3>
+                        <p style="font-size: 1rem; color: #7f1d1d; margin-bottom: 1rem; font-weight: 600;">
+                            <strong>Channels and packages in this repository are not guaranteed to be long-lived and may change or be removed without notice.</strong>
+                        </p>
+                        <p style="font-size: 0.95rem; color: #7f1d1d; margin: 0;">
+                            Always consult the <strong>Mina Protocol development team</strong> for the most current information about available channels, package compatibility, and recommended usage patterns.
+                        </p>
+                    </div>
+                </div>
+            </section>
 
             <section class="installation-guide">
                 <h2>Debian Installation Guide</h2>
