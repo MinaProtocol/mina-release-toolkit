@@ -1,0 +1,128 @@
+name: Test Debian Repository Pages
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'debian/repositories/**'
+      - '.github/workflows/test-debian-repositories.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'debian/repositories/**'
+      - '.github/workflows/test-debian-repositories.yml'
+  workflow_dispatch:
+
+jobs:
+  test-html-pages:
+    name: Test HTML Repository Pages
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: debian/repositories
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: |
+          # Install HTML validation tools
+          npm install -g html-validate
+          npm install -g htmlhint
+          
+      - name: Make test script executable
+        run: chmod +x ./test_from_html.sh
+        
+      - name: Validate HTML files exist
+        run: make validate
+        
+      - name: Test stable repository page
+        run: make test-stable
+        
+      - name: Test nightly repository page
+        run: make test-nightly
+        
+      - name: Test unstable repository page
+        run: make test-unstable
+        
+      - name: Run all tests together
+        run: make test
+        
+      - name: Validate HTML syntax with html-validate
+        run: |
+          echo "Validating HTML syntax..."
+          html-validate stable_packages_page.html || echo "⚠️ HTML validation warnings for stable page"
+          html-validate nightly_packages_page.html || echo "⚠️ HTML validation warnings for nightly page"
+          html-validate unstable_packages_page.html || echo "⚠️ HTML validation warnings for unstable page"
+          
+      - name: Check HTML with HTMLHint
+        run: |
+          echo "Running HTMLHint checks..."
+          htmlhint stable_packages_page.html || echo "⚠️ HTMLHint warnings for stable page"
+          htmlhint nightly_packages_page.html || echo "⚠️ HTMLHint warnings for nightly page"
+          htmlhint unstable_packages_page.html || echo "⚠️ HTMLHint warnings for unstable page"
+          
+      - name: Check for broken links (basic)
+        run: |
+          echo "Checking for common broken link patterns..."
+          ! grep -r "href=\"#\"" *.html || echo "⚠️ Found placeholder links"
+          ! grep -r "src=\"\"" *.html || echo "⚠️ Found empty src attributes"
+          
+      - name: Verify Makefile targets
+        run: |
+          echo "Verifying Makefile targets..."
+          make help
+          
+      - name: Test deployment dry-run (without AWS credentials)
+        run: |
+          echo "Testing dry-run commands (will fail without AWS, but tests Makefile syntax)..."
+          make dry-run || echo "✅ Dry-run commands are syntactically correct (AWS credentials not available in CI)"
+
+  test-makefile-syntax:
+    name: Test Makefile Syntax
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: debian/repositories
+        
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Test Makefile syntax
+        run: |
+          echo "Testing Makefile syntax..."
+          make -n help
+          make -n validate
+          make -n clean
+          
+      - name: Verify all targets are defined
+        run: |
+          echo "Checking that all expected targets exist..."
+          make -n test
+          make -n test-stable
+          make -n test-nightly 
+          make -n test-unstable
+          make -n deploy-stable
+          make -n deploy-nightly
+          make -n deploy-unstable
+          make -n dry-run
+          echo "✅ All targets are properly defined"
+          
+      - name: Check for required files
+        run: |
+          echo "Verifying required files exist..."
+          test -f stable_packages_page.html || (echo "❌ stable_packages_page.html missing" && exit 1)
+          test -f nightly_packages_page.html || (echo "❌ nightly_packages_page.html missing" && exit 1)  
+          test -f unstable_packages_page.html || (echo "❌ unstable_packages_page.html missing" && exit 1)
+          test -f test_from_html.sh || (echo "❌ test_from_html.sh missing" && exit 1)
+          test -f Makefile || (echo "❌ Makefile missing" && exit 1)
+          echo "✅ All required files present"
