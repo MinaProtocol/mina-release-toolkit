@@ -2,7 +2,7 @@
   description = "Mina Protocol Release Manager - Development Environment";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
     rust-overlay.url = "github:oxalica/rust-overlay";
     flake-utils.url = "github:numtide/flake-utils";
   };
@@ -115,11 +115,11 @@
           };
 
           nativeBuildInputs = [
-            pkg-config
+            pkgs.pkg-config
           ];
 
           buildInputs = [
-            openssl
+            pkgs.openssl
           ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
             pkgs.darwin.apple_sdk.frameworks.Security
             pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
