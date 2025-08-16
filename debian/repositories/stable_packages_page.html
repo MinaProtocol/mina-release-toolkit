@@ -453,6 +453,7 @@
             line-height: 1.5;
             overflow-x: auto;
             margin: 1rem 0;
+            position: relative;
         }
 
         .warning {
@@ -880,8 +881,13 @@
                             <span class="badge badge-stable">Production</span>
                         </div>
                         <div class="version-number">v3.1.0</div>
-                        <div class="install-command">sudo apt-get update && sudo apt-get install mina=3.1.0*
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('sudo apt-get update && sudo apt-get install mina=3.1.0*')">Copy</button>
+                        <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">Switch to stable channel:</p>
+                        <div class="install-command">echo "deb https://stable.packages.apt.minaprotocol.com bullseye stable" > /etc/apt/sources.list.d/mina.list
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('echo \"deb https://stable.packages.apt.minaprotocol.com bullseye stable\\" > /etc/apt/sources.list.d/mina.list')">Copy</button>
+                        </div>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Then install specific version:</p>
+                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina=3.1.0*
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update && apt-get install -y mina=3.1.0*')">Copy</button>
                         </div>
                         <ul class="package-list">
                             <li>mina=3.1.0* - Mainnet node</li>
@@ -898,8 +904,13 @@
                             <span class="badge badge-beta">Release Candidate</span>
                         </div>
                         <div class="version-number">v3.2.0-beta2</div>
-                        <div class="install-command">sudo apt-get update && sudo apt-get install mina=3.2.0-beta2*
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('sudo apt-get update && sudo apt-get install mina=3.2.0-beta2*')">Copy</button>
+                        <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">Switch to beta channel:</p>
+                        <div class="install-command">echo "deb https://stable.packages.apt.minaprotocol.com bullseye beta" > /etc/apt/sources.list.d/mina.list
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('echo \"deb https://stable.packages.apt.minaprotocol.com bullseye beta\\" > /etc/apt/sources.list.d/mina.list')">Copy</button>
+                        </div>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Then install specific version:</p>
+                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina=3.2.0-beta2*
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update && apt-get install -y mina=3.2.0-beta2*')">Copy</button>
                         </div>
                         <ul class="package-list">
                             <li>mina=3.2.0-beta2* - Mainnet node (beta)</li>
@@ -916,8 +927,13 @@
                             <span class="badge badge-alpha">Early Testing</span>
                         </div>
                         <div class="version-number">v3.2.0-alpha1</div>
-                        <div class="install-command">sudo apt-get update && sudo apt-get install mina=3.2.0-alpha1*
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('sudo apt-get update && sudo apt-get install mina=3.2.0-alpha1*')">Copy</button>
+                        <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">Switch to alpha channel:</p>
+                        <div class="install-command">echo "deb https://stable.packages.apt.minaprotocol.com bullseye alpha" > /etc/apt/sources.list.d/mina.list
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('echo \"deb https://stable.packages.apt.minaprotocol.com bullseye alpha\\" > /etc/apt/sources.list.d/mina.list')">Copy</button>
+                        </div>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Then install specific version:</p>
+                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina=3.2.0-alpha1*
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update && apt-get install -y mina=3.2.0-alpha1*')">Copy</button>
                         </div>
                         <ul class="package-list">
                             <li>mina=3.2.0-alpha1* - Mainnet node (alpha)</li>
@@ -932,43 +948,76 @@
             <section class="installation-guide">
                 <h2>Debian Installation Guide</h2>
                 <div class="guide-content">
-                    <p>To install Mina packages through the APT repository, follow these steps:</p>
+                    <p>To install Mina stable packages through the APT repository, follow these steps:</p>
 
                     <div class="step">
-                        <h3><span class="step-number">1</span>Import Debian Key (one-time setup)</h3>
+                        <h3><span class="step-number">1</span>Install Dependencies (Optional)</h3>
+                        <p>Install required dependencies if not already present:</p>
+                        <div class="code-block">apt-get install -y lsb-release ca-certificates wget gnupg
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get install -y lsb-release ca-certificates wget gnupg')">Copy</button>
+                        </div>
                         
-                        <p>Create a directory to store APT repository keys if it doesn't exist:</p>
-                        <div class="code-block">sudo install -d -m 0755 /etc/apt/keyrings</div>
-                        
-                        <p>Import the Mina APT repository signing key:</p>
-                        <div class="code-block">wget -q https://stable.packages.apt.minaprotocol.com/key.asc -O- | sudo tee /etc/apt/keyrings/stable.packages.apt.minaprotocol.com.asc > /dev/null</div>
-                        
-                        <p>If you don't have wget installed, install it first:</p>
-                        <div class="code-block">sudo apt-get install wget</div>
-                        
-                        <p>Verify the key fingerprint (should be <code>35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3</code>):</p>
-                        <div class="code-block">gpg -n -q --import --import-options import-show /etc/apt/keyrings/stable.packages.apt.minaprotocol.com.asc | awk '/pub/{getline; gsub(/^ +| +$/,""); if($0 == "35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3") print "\nThe key fingerprint matches ("$0").\n"; else print "\nVerification failed for Mina stable debian repo: the fingerprint ("$0") does not match the expected one.\n"}'</div>
+                        <p>Update package cache:</p>
+                        <div class="code-block">apt-get update
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update')">Copy</button>
+                        </div>
                     </div>
 
                     <div class="step">
-                        <h4><span class="step-number">2</span>Add Mina APT Repository (one-time setup)</h4>
-                        <p>Add the Mina APT repository to your sources list:</p>
-                        <div class="code-block">echo "deb [signed-by=/etc/apt/keyrings/stable.apt.packages.minaprotocol.com.asc] https://stable.apt.packages.minaprotocol.com bullseye stable" | sudo tee -a /etc/apt/sources.list.d/mina.stable.list > /dev/null</div>
+                        <h3><span class="step-number">2</span>Import Repository Signing Key</h3>
+                        <p>Download and install the Mina repository signing key:</p>
+                        <div class="code-block">wget -q https://stable.packages.apt.minaprotocol.com/repo-signing-key.gpg -O /etc/apt/trusted.gpg.d/minaprotocol.gpg
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('wget -q https://stable.packages.apt.minaprotocol.com/repo-signing-key.gpg -O /etc/apt/trusted.gpg.d/minaprotocol.gpg')">Copy</button>
+                        </div>
+                        
+                        <p>Update package cache after adding the key:</p>
+                        <div class="code-block">apt-get update
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update')">Copy</button>
+                        </div>
                     </div>
 
                     <div class="step">
-                        <h4><span class="step-number">3</span>Prioritize Stable Repository (one-time setup)</h4>
-                        <p>Configure APT to prioritize packages from the Mina repository:</p>
-                        <div class="code-block">echo 'Package: *
-Pin: origin stable.packages.apt.minaprotocol.com
-Pin-Priority: 1000
-' | sudo tee /etc/apt/preferences.d/mina</div>
+                        <h3><span class="step-number">3</span>Add Mina APT Repository</h3>
+                        <p>Add the Mina stable APT repository:</p>
+                        <div class="code-block">echo "deb https://stable.packages.apt.minaprotocol.com bullseye stable" > /etc/apt/sources.list.d/mina.list
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('echo \"deb https://stable.packages.apt.minaprotocol.com bullseye stable\" > /etc/apt/sources.list.d/mina.list')">Copy</button>
+                        </div>
+
+                        <div class="warning">
+                            <strong>Distribution Codenames:</strong> Replace <code>bullseye</code> with your distribution codename.
+                            <br><br>
+                            <strong>Auto-detect your codename:</strong>
+                            <div class="code-block" style="margin: 0.5rem 0;">lsb_release -c
+                                <button class="copy-button" onclick="navigator.clipboard.writeText('lsb_release -c')">Copy</button>
+                            </div>
+                            <strong>Or use these common codenames:</strong>
+                            <ul style="margin: 0.5rem 0 0 1.5rem;">
+                                <li><strong>Ubuntu 20.04:</strong> <code>focal</code></li>
+                                <li><strong>Ubuntu 24.04:</strong> <code>noble</code></li>
+                                <li><strong>Debian 11:</strong> <code>bullseye</code></li>
+                                <li><strong>Debian 12:</strong> <code>bookworm</code></li>
+                            </ul>
+                            <br>
+                            <strong>Switching between stable/beta/alpha channels:</strong>
+                            <br>To switch channels, modify the entry in <code>/etc/apt/sources.list.d/mina.list</code>:
+                            <ul style="margin: 0.5rem 0 0 1.5rem;">
+                                <li><strong>Stable:</strong> <code>deb https://stable.packages.apt.minaprotocol.com bullseye stable</code></li>
+                                <li><strong>Beta:</strong> <code>deb https://stable.packages.apt.minaprotocol.com bullseye beta</code></li>
+                                <li><strong>Alpha:</strong> <code>deb https://stable.packages.apt.minaprotocol.com bullseye alpha</code></li>
+                            </ul>
+                        </div>
                     </div>
 
                     <div class="step">
-                        <h4><span class="step-number">4</span>Install Mina</h4>
-                        <p>Update your package list and install the Mina package:</p>
-                        <div class="code-block">sudo apt-get update && sudo apt-get install mina</div>
+                        <h3><span class="step-number">4</span>Install Mina Package</h3>
+                        <p>Update package list and install Mina:</p>
+                        <div class="code-block">apt-get update
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update')">Copy</button>
+                        </div>
+                        
+                        <div class="code-block">apt-get install -y mina
+                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get install -y mina')">Copy</button>
+                        </div>
                         
                         <div class="warning">
                             <strong>Note:</strong> For other packages, replace <code>mina</code> with the appropriate package name from the table above (e.g., <code>mina-devnet</code>, <code>mina-archive</code>, etc.).

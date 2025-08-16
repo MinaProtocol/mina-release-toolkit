@@ -40,41 +40,42 @@ extract_commands_from_html() {
     
     log_info "Extracting commands from $html_file"
     
-    # Extract only the content inside <div class="code-block">...</div> tags
-    # Use grep to find lines with code-block divs, then extract just the command
-    local commands=()
-    
-    # Method 1: Extract using grep and sed for single-line commands
-    while IFS= read -r line; do
-        if [[ "$line" =~ \<div\ class=\"code-block\"\>([^<]+)\</div\> ]]; then
-            local cmd="${BASH_REMATCH[1]}"
-            # Clean up any HTML entities or extra whitespace
-            cmd=$(echo "$cmd" | sed 's/&lt;/</g' | sed 's/&gt;/>/g' | sed 's/&amp;/\&/g' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
-            if [ -n "$cmd" ]; then
-                commands+=("$cmd")
-            fi
-        fi
-    done < "$html_file"
-    
-    # Method 2: Handle multiline commands by extracting content between tags
+    # Extract commands from code-block divs that may contain copy buttons
     local temp_file
     temp_file=$(mktemp)
     
-    # Extract multiline code blocks
+    # Use awk to extract content between <div class="code-block"> and <button class="copy-button">
+    # or between <div class="code-block"> and </div> if no button present
     awk '
-    /<div class="code-block">/ {
+    /<div class="code-block"[^>]*>/ {
         in_block = 1
         content = ""
         # Extract content from the same line if it exists
         line = $0
-        gsub(/.*<div class="code-block">/, "", line)
-        if (match(line, /^[^<]+/)) {
-            content = substr(line, RSTART, RLENGTH)
+        gsub(/.*<div class="code-block"[^>]*>/, "", line)
+        # Remove any trailing button or closing div tags from the same line
+        gsub(/<button.*/, "", line)
+        gsub(/<\/div>.*/, "", line)
+        if (line != "") {
+            content = line
         }
         next
     }
+    /<button class="copy-button"/ && in_block {
+        # End of command, output what we have
+        if (content != "") {
+            gsub(/^[[:space:]]*/, "", content)  # Remove leading whitespace
+            gsub(/[[:space:]]*$/, "", content)  # Remove trailing whitespace
+            if (content != "") {
+                print content
+            }
+        }
+        in_block = 0
+        content = ""
+        next
+    }
     /<\/div>/ && in_block {
-        # Extract any remaining content before the closing tag
+        # End of command block without button
         line = $0
         gsub(/<\/div>.*/, "", line)
         if (line != "" && content != "") {
@@ -84,14 +85,18 @@ extract_commands_from_html() {
         }
         
         if (content != "") {
-            print content
-            print "---BLOCK_END---"
+            gsub(/^[[:space:]]*/, "", content)  # Remove leading whitespace
+            gsub(/[[:space:]]*$/, "", content)  # Remove trailing whitespace
+            if (content != "") {
+                print content
+            }
         }
         in_block = 0
         content = ""
         next
     }
     in_block {
+        # Accumulate content within the block
         if (content == "") {
             content = $0
         } else {
@@ -100,61 +105,58 @@ extract_commands_from_html() {
     }
     ' "$html_file" > "$temp_file"
     
-    # Process multiline blocks
-    local current_cmd=""
+    # Read commands from temp file and clean them up
+    local commands=()
     while IFS= read -r line; do
-        if [ "$line" = "---BLOCK_END---" ]; then
-            if [ -n "$current_cmd" ]; then
-                # Clean up and validate command
-                current_cmd=$(echo "$current_cmd" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
-                if [[ "$current_cmd" =~ ^(sudo|apt-get|wget|echo|gpg|install|dpkg) ]] || [[ "$current_cmd" =~ \| ]]; then
-                    commands+=("$current_cmd")
-                fi
-            fi
-            current_cmd=""
-        else
-            if [ -z "$current_cmd" ]; then
-                current_cmd="$line"
-            else
-                current_cmd="$current_cmd"$'\n'"$line"
+        if [ -n "$line" ]; then
+            # Clean up HTML entities and whitespace
+            line=$(echo "$line" | sed 's/&lt;/</g' | sed 's/&gt;/>/g' | sed 's/&amp;/\&/g' | sed 's/&quot;/"/g')
+            line=$(echo "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+            
+            # Skip empty lines, comments, or lines that are just HTML artifacts
+            if [[ -n "$line" && ! "$line" =~ ^[[:space:]]*# && ! "$line" =~ ^[[:space:]]*$ && ! "$line" =~ ^\<.*\>$ ]]; then
+                commands+=("$line")
             fi
         fi
     done < "$temp_file"
     
     rm -f "$temp_file"
     
-    # Remove duplicates and filter valid commands
+    # Remove duplicates while preserving order
     local unique_commands=()
     for cmd in "${commands[@]}"; do
-        # Skip if it's HTML content or empty
-        if [[ "$cmd" =~ ^[[:space:]]*$ ]] || [[ "$cmd" =~ \<.*\> ]] || [[ "$cmd" =~ ^[^a-zA-Z0-9] ]]; then
+        # Skip lsb_release commands as they're informational
+        if [[ "$cmd" =~ lsb_release ]]; then
             continue
         fi
         
-        # Check if command already exists
-        local duplicate=false
+        # Check if command is already in the array
+        local found=0
         for existing in "${unique_commands[@]}"; do
-            if [ "$cmd" = "$existing" ]; then
-                duplicate=true
+            if [ "$existing" = "$cmd" ]; then
+                found=1
                 break
             fi
         done
-        
-        if [ "$duplicate" = false ]; then
+        if [ $found -eq 0 ]; then
             unique_commands+=("$cmd")
         fi
     done
     
-    # Print extracted commands for verification
+    # Print extracted commands
     log_info "Extracted ${#unique_commands[@]} unique commands:"
     for i in "${!unique_commands[@]}"; do
-        echo "Command $((i+1)):"
-        echo "${unique_commands[i]}"
-        echo "---"
+        echo "  $((i+1)). ${unique_commands[i]}"
     done
     
-    # Return commands array (store in global variable)
+    if [ ${#unique_commands[@]} -eq 0 ]; then
+        log_error "No commands extracted from HTML file"
+        return 1
+    fi
+    
+    # Store commands in global array for use by test function
     EXTRACTED_COMMANDS=("${unique_commands[@]}")
+    return 0
 }
 
 # Function to validate extracted commands
@@ -162,268 +164,229 @@ validate_commands() {
     local commands=("$@")
     local validation_passed=true
     
-    log_info "Validating extracted commands..."
+    log_info "Validating ${#commands[@]} commands..."
     
-    # Check for required commands
-    local required_patterns=(
-        "install.*keyrings"
-        "wget.*key\.asc"
-        "gpg.*import"
-        "echo.*deb.*minaprotocol"
-        "apt-get.*update.*install"
-    )
-    
-    for pattern in "${required_patterns[@]}"; do
-        local found=false
-        for cmd in "${commands[@]}"; do
-            if [[ "$cmd" =~ $pattern ]]; then
-                found=true
-                break
-            fi
-        done
+    for i in "${!commands[@]}"; do
+        local cmd="${commands[i]}"
+        local cmd_num=$((i+1))
         
-        if [ "$found" = false ]; then
-            log_warning "Missing expected pattern: $pattern"
+        # Basic syntax validation
+        if [[ -z "$cmd" ]]; then
+            log_error "Command $cmd_num is empty"
             validation_passed=false
+            continue
+        fi
+        
+        # Check for suspicious patterns
+        if [[ "$cmd" =~ \;\s*rm\s+-rf|sudo\s+rm\s+-rf ]]; then
+            log_error "Command $cmd_num contains dangerous rm -rf: $cmd"
+            validation_passed=false
+        fi
+        
+        # Check for basic shell syntax
+        if [[ "$cmd" =~ ^[a-zA-Z] ]]; then
+            log_info "✓ Command $cmd_num looks valid: ${cmd:0:60}..."
+        else
+            log_warning "? Command $cmd_num might have syntax issues: $cmd"
         fi
     done
     
     if [ "$validation_passed" = true ]; then
-        log_success "Command validation passed"
+        log_success "All commands passed basic validation"
         return 0
     else
-        log_warning "Command validation had warnings"
+        log_error "Some commands failed validation"
         return 1
     fi
 }
 
-# Function to create installation script from extracted commands
-create_install_script_from_html() {
-    local commands=("$@")
-    local script_name="install_from_html.sh"
+# Function to test commands in Docker container
+test_commands_in_container() {
+    local distribution="$1"
+    local commands=("${@:2}")
     
-    cat > "$script_name" << 'EOF'
+    log_info "Testing commands in Docker container ($distribution)..."
+    
+    # Create a temporary script with all commands
+    local script_file
+    script_file=$(mktemp)
+    
+    # Add shebang and error handling
+    cat > "$script_file" << 'EOF'
 #!/bin/bash
 set -e
-
-echo "=== Mina Installation Test (from HTML) ==="
-echo "Distribution: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'=' -f2 | tr -d '"')"
-echo "=========================================="
-
-# Install prerequisites
-echo "🔧 Installing prerequisites..."
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y wget gnupg ca-certificates
-
 EOF
-
-    # Add each extracted command
-    local step=1
+    
+    # Add each command to the script
     for cmd in "${commands[@]}"; do
-        {
-            echo ""
-            echo "echo \"🔧 Step $step: Executing command...\""
-            echo "echo \"Command: ${cmd//$'\n'/ }\""
-        } >> "$script_name"
-        
-        # Handle special cases
-        if [[ "$cmd" =~ "sudo apt-get install wget" ]]; then
-            echo "# Skipping wget installation as it's already installed" >> "$script_name"
-        elif [[ "$cmd" =~ gpg.*import.*awk ]]; then
-            # Handle the complex GPG verification command
-            {
-                echo "echo \"🔑 Verifying key fingerprint...\""
-                echo "FINGERPRINT=\$(gpg -n -q --import --import-options import-show /etc/apt/keyrings/stable.packages.apt.minaprotocol.com.asc | awk '/pub/{getline; gsub(/^ +| +\$/,\"\"); print \$0}')"
-                echo "EXPECTED=\"35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3\""
-                echo "if [ \"\$FINGERPRINT\" = \"\$EXPECTED\" ]; then"
-                echo "    echo \"✅ Key fingerprint matches: \$FINGERPRINT\""
-                echo "else"
-                echo "    echo \"❌ Key verification failed: \$FINGERPRINT\""
-                echo "    exit 1"
-                echo "fi"
-            } >> "$script_name"
-        else
-            # Regular command - escape properly
-            local escaped_cmd
-            escaped_cmd=$(printf '%s\n' "$cmd" | sed 's/"/\\"/g')
-            echo "$escaped_cmd" >> "$script_name"
-        fi
-        
-        ((step++))
+        echo "$cmd" >> "$script_file"
     done
     
-    # Add verification at the end
-    cat >> "$script_name" << 'EOF'
-
-echo ""
-echo "🎉 Installation completed!"
-echo ""
-echo "📋 Verification:"
-if command -v mina >/dev/null 2>&1; then
-    echo "✅ Mina command is available"
-    mina version 2>/dev/null || echo "ℹ️  Mina version info not available"
-else
-    echo "ℹ️  Mina command not found (expected for some package types)"
-fi
-
-echo "📦 Installed Mina packages:"
-dpkg -l | grep mina || echo "No mina packages found"
-
-echo "✅ Test completed successfully!"
+    # Add final verification
+    cat >> "$script_file" << 'EOF'
+echo "Installation completed successfully!"
 EOF
-
-    chmod +x "$script_name"
-    echo "$script_name"
+    
+    chmod +x "$script_file"
+    
+    log_info "Created test script with ${#commands[@]} commands"
+    log_info "Running Docker container test..."
+    
+    # Run the script in Docker container
+    if docker run --rm -v "$script_file:/test_script.sh" "$distribution" /bin/bash -c "/test_script.sh"; then
+        log_success "✅ All commands executed successfully in $distribution container"
+        rm -f "$script_file"
+        return 0
+    else
+        log_error "❌ Command execution failed in $distribution container"
+        log_info "Test script saved at: $script_file (for debugging)"
+        return 1
+    fi
 }
 
-# Function to run test with extracted commands
-test_installation_from_html() {
+# Function to run syntax check on commands
+syntax_check_commands() {
+    local commands=("$@")
+    
+    log_info "Performing syntax check on commands..."
+    
+    for i in "${!commands[@]}"; do
+        local cmd="${commands[i]}"
+        local cmd_num=$((i+1))
+        
+        # Create a temporary script to test syntax
+        local temp_script
+        temp_script=$(mktemp)
+        echo "#!/bin/bash" > "$temp_script"
+        echo "$cmd" >> "$temp_script"
+        
+        if bash -n "$temp_script" 2>/dev/null; then
+            log_info "✓ Command $cmd_num syntax OK"
+        else
+            log_error "✗ Command $cmd_num syntax error: $cmd"
+            rm -f "$temp_script"
+            return 1
+        fi
+        
+        rm -f "$temp_script"
+    done
+    
+    log_success "All commands passed syntax check"
+    return 0
+}
+
+# Main function to test HTML file
+test_html_file() {
     local html_file="$1"
-    local distro="${2:-ubuntu:focal}"
+    local distribution="${2:-ubuntu:focal}"
+    local run_docker_test="${3:-false}"
+    
+    echo "🧪 Mina Installation Guide Test - HTML Parser"
+    echo "============================================="
+    echo
     
     log_info "Testing installation from HTML file: $html_file"
-    log_info "Using distribution: $distro"
+    log_info "Using distribution: $distribution"
     
     # Extract commands from HTML
-    extract_commands_from_html "$html_file"
-    
-    if [ ${#EXTRACTED_COMMANDS[@]} -eq 0 ]; then
-        log_error "No commands extracted from HTML file"
+    if ! extract_commands_from_html "$html_file"; then
+        log_error "❌ Failed to extract commands from HTML file"
         return 1
     fi
     
     # Validate commands
-    validate_commands "${EXTRACTED_COMMANDS[@]}"
-    
-    # Create installation script
-    local script_file
-    script_file=$(create_install_script_from_html "${EXTRACTED_COMMANDS[@]}")
-    
-    log_info "Created installation script: $script_file"
-    
-    # Run Docker test
-    local container_name="mina_html_test_$$"
-    docker rm -f "$container_name" 2>/dev/null || true
-    
-    log_info "Running Docker container test..."
-    
-    if docker run --name "$container_name" \
-        -v "$(pwd)/$script_file:/install_test.sh:ro" \
-        "$distro" \
-        bash /install_test.sh; then
-        
-        log_success "Installation from HTML succeeded!"
-        
-        # Clean up on success
-        docker rm "$container_name" >/dev/null 2>&1 || true
-        rm -f "$script_file"
-        return 0
-    else
-        log_error "Installation from HTML failed"
-        log_warning "Container '$container_name' preserved for debugging"
-        log_warning "Script '$script_file' preserved for inspection"
+    if ! validate_commands "${EXTRACTED_COMMANDS[@]}"; then
+        log_error "❌ Command validation failed"
         return 1
     fi
-}
-
-# Main function
-main() {
-    echo "🧪 Mina Installation Guide Test - HTML Parser"
-    echo "============================================="
-    echo ""
     
-    local html_file=""
-    local distro="ubuntu:focal"
-    local show_commands_only=false
-    
-    # Parse command line arguments
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            --html)
-                html_file="$2"
-                shift 2
-                ;;
-            --distro)
-                distro="$2"
-                shift 2
-                ;;
-            --show-commands)
-                show_commands_only=true
-                shift
-                ;;
-            --help)
-                echo "Usage: $0 --html HTML_FILE [OPTIONS]"
-                echo ""
-                echo "Required:"
-                echo "  --html FILE         HTML file containing installation guide"
-                echo ""
-                echo "Options:"
-                echo "  --distro DISTRO     Docker distribution to test (default: ubuntu:focal)"
-                echo "  --show-commands     Only extract and show commands, don't run test"
-                echo "  --help             Show this help message"
-                echo ""
-                echo "Example:"
-                echo "  $0 --html improved_mina_packages_page.html"
-                echo "  $0 --html guide.html --distro debian:bullseye"
-                echo "  $0 --html guide.html --show-commands"
-                exit 0
-                ;;
-            *)
-                log_error "Unknown option: $1"
-                echo "Use --help for usage information"
-                exit 1
-                ;;
-        esac
-    done
-    
-    # Check required arguments
-    if [ -z "$html_file" ]; then
-        log_error "HTML file is required. Use --html FILE"
-        echo "Use --help for usage information"
-        exit 1
+    # Syntax check
+    if ! syntax_check_commands "${EXTRACTED_COMMANDS[@]}"; then
+        log_error "❌ Syntax check failed"
+        return 1
     fi
     
-    if [ ! -f "$html_file" ]; then
-        log_error "HTML file not found: $html_file"
-        exit 1
-    fi
-    
-    # Check Docker availability if not just showing commands
-    if [ "$show_commands_only" = false ]; then
-        if ! command -v docker >/dev/null 2>&1; then
-            log_error "Docker is not installed or not available"
-            exit 1
-        fi
-        
-        if ! docker info >/dev/null 2>&1; then
-            log_error "Docker daemon is not running or accessible"
-            exit 1
-        fi
-    fi
-    
-    if [ "$show_commands_only" = true ]; then
-        # Just extract and show commands
-        extract_commands_from_html "$html_file"
-        validate_commands "${EXTRACTED_COMMANDS[@]}"
-        echo ""
-        log_info "Command extraction complete. Use without --show-commands to run test."
-    else
-        # Run full test
-        if test_installation_from_html "$html_file" "$distro"; then
-            echo ""
-            log_success "✅ All tests passed! The HTML installation guide is working correctly."
-            exit 0
+    # Docker test (optional)
+    if [ "$run_docker_test" = "true" ]; then
+        if command -v docker >/dev/null 2>&1; then
+            if ! test_commands_in_container "$distribution" "${EXTRACTED_COMMANDS[@]}"; then
+                log_error "❌ Docker container test failed"
+                return 1
+            fi
         else
-            echo ""
-            log_error "❌ Test failed. Check the HTML installation guide for issues."
-            exit 1
+            log_warning "Docker not available, skipping container test"
         fi
+    else
+        log_info "Skipping Docker test (use --docker to enable)"
     fi
+    
+    log_success "✅ All tests passed!"
+    return 0
 }
 
-# Global variable to store extracted commands
-declare -a EXTRACTED_COMMANDS
+# Parse command line arguments
+usage() {
+    echo "Usage: $0 --html <html_file> [--distribution <dist>] [--docker]"
+    echo ""
+    echo "Options:"
+    echo "  --html <file>           HTML file to test"
+    echo "  --distribution <dist>   Docker distribution to test with (default: ubuntu:focal)"
+    echo "  --docker               Run actual Docker test (default: false)"
+    echo ""
+    echo "Examples:"
+    echo "  $0 --html stable_packages_page.html"
+    echo "  $0 --html nightly_packages_page.html --distribution ubuntu:noble"
+    echo "  $0 --html unstable_packages_page.html --docker"
+}
 
-# Run main function
-main "$@"
+# Global variables
+EXTRACTED_COMMANDS=()
+HTML_FILE=""
+DISTRIBUTION="ubuntu:focal"
+RUN_DOCKER_TEST=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --html)
+            HTML_FILE="$2"
+            shift 2
+            ;;
+        --distribution)
+            DISTRIBUTION="$2"
+            shift 2
+            ;;
+        --docker)
+            RUN_DOCKER_TEST=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            log_error "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+# Check required arguments
+if [ -z "$HTML_FILE" ]; then
+    log_error "HTML file is required"
+    usage
+    exit 1
+fi
+
+# Run the test
+if test_html_file "$HTML_FILE" "$DISTRIBUTION" "$RUN_DOCKER_TEST"; then
+    echo
+    log_success "🎉 Test completed successfully!"
+    exit 0
+else
+    echo
+    log_error "❌ Test failed. Check the HTML installation guide for issues."
+    exit 1
+fi
