@@ -3,7 +3,7 @@
 # Mina Installation Guide Test - HTML Parser Version
 # Reads installation steps directly from HTML file
 
-set -e
+set -ex
 
 # Colors for output
 RED='\033[0;31m'
@@ -216,6 +216,8 @@ test_commands_in_container() {
 #!/bin/bash
 set -e
 export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y curl wget gnupg lsb-release apt-transport-https
 EOF
     
     # Add each command to the script
@@ -234,7 +236,7 @@ EOF
     log_info "Running Docker container test..."
     
     # Run the script in Docker container
-    if docker run --rm -v "$script_file:/test_script.sh" "$distribution" /bin/bash -c "/test_script.sh"; then
+    if docker run --platform linux/amd64 --rm -v "$script_file:/test_script.sh" "$distribution" /bin/bash -c "/test_script.sh"; then
         log_success "✅ All commands executed successfully in $distribution container"
         rm -f "$script_file"
         return 0
@@ -279,7 +281,7 @@ syntax_check_commands() {
 # Main function to test HTML file
 test_html_file() {
     local html_file="$1"
-    local distribution="${2:-ubuntu:focal}"
+    local distribution="${2:-ubuntu:noble}"
     local run_docker_test="${3:-false}"
     
     echo "🧪 Mina Installation Guide Test - HTML Parser"
@@ -343,7 +345,7 @@ usage() {
 # Global variables
 EXTRACTED_COMMANDS=()
 HTML_FILE=""
-DISTRIBUTION="ubuntu:focal"
+DISTRIBUTION="ubuntu:noble"
 RUN_DOCKER_TEST=false
 
 # Parse arguments

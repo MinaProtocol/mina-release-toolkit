@@ -93,7 +93,7 @@ test-stable:
 	@echo "Testing stable repository page..."
 	@test -f $(STABLE_HTML) || (echo "❌ $(STABLE_HTML) not found" && exit 1)
 	@test -x $(TEST_SCRIPT) || (echo "❌ $(TEST_SCRIPT) not found or not executable" && exit 1)
-	@$(TEST_SCRIPT) --html $(STABLE_HTML)
+	@$(TEST_SCRIPT) --html $(STABLE_HTML) --docker
 	@echo "✅ Stable repository page test completed"
 
 # Test nightly repository page
@@ -102,7 +102,7 @@ test-nightly:
 	@echo "Testing nightly repository page..."
 	@test -f $(NIGHTLY_HTML) || (echo "❌ $(NIGHTLY_HTML) not found" && exit 1)
 	@test -x $(TEST_SCRIPT) || (echo "❌ $(TEST_SCRIPT) not found or not executable" && exit 1)
-	@$(TEST_SCRIPT) --html $(NIGHTLY_HTML)
+	@$(TEST_SCRIPT) --html $(NIGHTLY_HTML) --docker
 	@echo "✅ Nightly repository page test completed"
 
 # Test unstable repository page
@@ -111,7 +111,7 @@ test-unstable:
 	@echo "Testing unstable repository page..."
 	@test -f $(UNSTABLE_HTML) || (echo "❌ $(UNSTABLE_HTML) not found" && exit 1)
 	@test -x $(TEST_SCRIPT) || (echo "❌ $(TEST_SCRIPT) not found or not executable" && exit 1)
-	@$(TEST_SCRIPT) --html $(UNSTABLE_HTML)
+	@$(TEST_SCRIPT) --html $(UNSTABLE_HTML) --docker
 	@echo "✅ Unstable repository page test completed"
 
 # Test all repository pages

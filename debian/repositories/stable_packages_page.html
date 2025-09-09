@@ -490,6 +490,11 @@
         .footer a:hover {
             text-decoration: underline;
         }
+        
+        /* Copy button improvements */
+        .copy-success {
+            background: #10b981 !important;
+        }
 
         @media (max-width: 768px) {
             .container {
@@ -674,12 +679,15 @@
                     <div class="card-content">
                         <ul class="list">
                             <li>Ubuntu Focal (20.04 LTS)</li>
+                            <li>Ubuntu Jammy (22.04 LTS) <span class="version-note">**</span></li>
                             <li>Ubuntu Noble (24.04 LTS) <span class="version-note">*</span></li>
                             <li>Debian Bullseye (11)</li>
                             <li>Debian Bookworm (12) <span class="version-note">*</span></li>
                         </ul>
                         <div class="version-annotation">
                             <small><span class="version-note">*</span> Supported starting from Mina version 3.1.0 and newer</small>
+                            <br>
+                            <small><span class="version-note">**</span> Supported starting from Mina version 3.3.0 and newer</small>
                         </div>
                     </div>
                 </div>
@@ -702,17 +710,17 @@
                                     <tr>
                                         <td>Mina Node</td>
                                         <td><span class="badge badge-mainnet">Mainnet</span></td>
-                                        <td><code>mina</code></td>
+                                        <td><code>mina-mainnet</code></td>
                                     </tr>
                                     <tr>
                                         <td>Mina Rosetta Node</td>
                                         <td><span class="badge badge-mainnet">Mainnet</span></td>
-                                        <td><code>mina-rosetta</code></td>
+                                        <td><code>mina-rosetta-mainnet</code></td>
                                     </tr>
                                     <tr>
                                         <td>Archive Node</td>
                                         <td><span class="badge badge-mainnet">Mainnet</span></td>
-                                        <td><code>mina-archive</code></td>
+                                        <td><code>mina-archive-mainnet</code></td>
                                     </tr>
                                     <tr>
                                         <td>Archive Node</td>
@@ -739,8 +747,8 @@
             <section class="release-channels">
                 <div class="container">
                     <div style="text-align: center; margin-bottom: 3rem;">
-                        <h2 style="font-size: 2rem; font-weight: 700; margin-bottom: 1rem; color: var(--text-primary);">Release Channels</h2>
-                        <p style="font-size: 1.125rem; color: var(--text-secondary); max-width: 600px; margin: 0 auto;">Choose the right channel for your deployment needs, from production-ready stable releases to cutting-edge development builds.</p>
+                        <h2 style="font-size: 2rem; font-weight: 700; margin-bottom: 1rem; color: var(--text-primary);">Stable Release Channel</h2>
+                        <p style="font-size: 1.125rem; color: var(--text-secondary); max-width: 600px; margin: 0 auto;">Production-ready stable releases with enterprise-grade reliability for mainnet deployments.</p>
                     </div>
 
                     <div class="channel-card stable">
@@ -784,94 +792,13 @@
                         </div>
                     </div>
 
-                    <div class="channel-card beta">
-                        <div class="channel-header">
-                            <div class="channel-title">
-                                <div class="channel-icon">β</div>
-                                <h3>Beta</h3>
-                                <span class="badge badge-beta">Release Candidate</span>
-                            </div>
-                        </div>
-                        <div class="channel-meta">
-                            <div class="meta-item">
-                                <div class="meta-label">Target Network</div>
-                                <div class="meta-value">Mainnet</div>
-                            </div>
-                            <div class="meta-item">
-                                <div class="meta-label">Risk Level</div>
-                                <div class="meta-value">Low</div>
-                            </div>
-                        </div>
-                        <div class="channel-description">
-                            <strong>Pre-production releases for early adopters.</strong> These packages are promoted from alpha after successful devnet validation and represent feature-complete implementations ready for final testing. Ideal for organizations that want to evaluate upcoming features and provide feedback before stable release.
-                        </div>
-                        <div class="channel-highlights">
-                            <div class="highlight">
-                                <div class="highlight-title">🚀 Early Access</div>
-                                <div class="highlight-content">First access to new features and protocol improvements</div>
-                            </div>
-                            <div class="highlight">
-                                <div class="highlight-title">🧪 Testing Focus</div>
-                                <div class="highlight-content">Suitable for mainnet testing environments and staging deployments</div>
-                            </div>
-                            <div class="highlight">
-                                <div class="highlight-title">📊 Performance Data</div>
-                                <div class="highlight-content">Help collect real-world performance metrics and edge case scenarios</div>
-                            </div>
-                            <div class="highlight">
-                                <div class="highlight-title">🔄 Regular Updates</div>
-                                <div class="highlight-content">Frequent updates with bug fixes and feature refinements</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="channel-card alpha">
-                        <div class="channel-header">
-                            <div class="channel-title">
-                                <div class="channel-icon">α</div>
-                                <h3>Alpha</h3>
-                                <span class="badge badge-alpha">Early Testing</span>
-                            </div>
-                        </div>
-                        <div class="channel-meta">
-                            <div class="meta-item">
-                                <div class="meta-label">Target Network</div>
-                                <div class="meta-value">Devnet</div>
-                            </div>
-                            <div class="meta-item">
-                                <div class="meta-label">Risk Level</div>
-                                <div class="meta-value">Medium</div>
-                            </div>
-                        </div>
-                        <div class="channel-description">
-                            <strong>Cutting-edge development builds for research and testing.</strong> These packages contain the latest experimental features, protocol changes, and performance optimizations. Essential for protocol researchers, core developers, and community members contributing to Mina's evolution. <em>Not suitable for production use.</em>
-                        </div>
-                        <div class="channel-highlights">
-                            <div class="highlight">
-                                <div class="highlight-title">🔬 Research Focus</div>
-                                <div class="highlight-content">Experimental consensus mechanisms and cryptographic improvements</div>
-                            </div>
-                            <div class="highlight">
-                                <div class="highlight-title">⚠️ Known Issues</div>
-                                <div class="highlight-content">May contain bugs and breaking changes - use with caution</div>
-                            </div>
-                            <div class="highlight">
-                                <div class="highlight-title">🏗️ Protocol Development</div>
-                                <div class="highlight-content">Test new protocol features and network upgrade mechanisms</div>
-                            </div>
-                            <div class="highlight">
-                                <div class="highlight-title">👥 Community Testing</div>
-                                <div class="highlight-content">Help validate features before promotion to beta channel</div>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </section>
 
             <section class="versions-section">
                 <div class="versions-header">
-                    <h2 style="font-size: 2rem; font-weight: 700; margin-bottom: 1rem; color: var(--text-primary);">Latest Versions</h2>
-                    <p style="font-size: 1.125rem; color: var(--text-secondary); max-width: 600px; margin: 0 auto;">Current release versions available for each channel with installation commands.</p>
+                    <h2 style="font-size: 2rem; font-weight: 700; margin-bottom: 1rem; color: var(--text-primary);">Latest Stable Version</h2>
+                    <p style="font-size: 1.125rem; color: var(--text-secondary); max-width: 600px; margin: 0 auto;">Current stable release version with installation commands for production use.</p>
                 </div>
                 <div class="versions-grid">
                     <div class="version-card stable">
@@ -881,65 +808,21 @@
                             <span class="badge badge-stable">Production</span>
                         </div>
                         <div class="version-number">v3.1.0</div>
-                        <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">Switch to stable channel:</p>
-                        <div class="install-command">echo "deb https://stable.packages.apt.minaprotocol.com bullseye stable" > /etc/apt/sources.list.d/mina.list
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('echo \"deb https://stable.packages.apt.minaprotocol.com bullseye stable\\" > /etc/apt/sources.list.d/mina.list')">Copy</button>
+                        <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">Add stable repository:</p>
+                        <div class="install-command">echo "deb https://stable.apt.packages.minaprotocol.com bullseye stable" > /etc/apt/sources.list.d/mina.list
+                            <button class="copy-button" onclick="copyToClipboard(&quot;echo \\&quot;deb https://stable.apt.packages.minaprotocol.com bullseye stable\\&quot; > /etc/apt/sources.list.d/mina.list&quot;, this)">Copy</button>
                         </div>
                         <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Then install specific version:</p>
-                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina=3.1.0*
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update && apt-get install -y mina=3.1.0*')">Copy</button>
+                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina-mainnet=3.1.0*
+                            <button class="copy-button" onclick="copyToClipboard('apt-get update && apt-get install -y mina-mainnet=3.1.0*', this)">Copy</button>
                         </div>
                         <ul class="package-list">
-                            <li>mina=3.1.0* - Mainnet node</li>
+                            <li>mina-mainnet=3.1.0* - Mainnet node</li>
                             <li>mina-devnet=3.1.0* - Devnet node</li>
-                            <li>mina-archive=3.1.0* - Archive node</li>
-                            <li>mina-rosetta=3.1.0* - Rosetta API</li>
-                        </ul>
-                    </div>
-
-                    <div class="version-card beta">
-                        <div class="version-title">
-                            <div class="channel-icon" style="width: 2rem; height: 2rem; font-size: 1rem;">β</div>
-                            <h4>Beta</h4>
-                            <span class="badge badge-beta">Release Candidate</span>
-                        </div>
-                        <div class="version-number">v3.2.0-beta2</div>
-                        <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">Switch to beta channel:</p>
-                        <div class="install-command">echo "deb https://stable.packages.apt.minaprotocol.com bullseye beta" > /etc/apt/sources.list.d/mina.list
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('echo \"deb https://stable.packages.apt.minaprotocol.com bullseye beta\\" > /etc/apt/sources.list.d/mina.list')">Copy</button>
-                        </div>
-                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Then install specific version:</p>
-                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina=3.2.0-beta2*
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update && apt-get install -y mina=3.2.0-beta2*')">Copy</button>
-                        </div>
-                        <ul class="package-list">
-                            <li>mina=3.2.0-beta2* - Mainnet node (beta)</li>
-                            <li>mina-devnet=3.2.0-beta2* - Devnet node (beta)</li>
-                            <li>mina-archive=3.2.0-beta2* - Archive node (beta)</li>
-                            <li>mina-rosetta=3.2.0-beta2* - Rosetta API (beta)</li>
-                        </ul>
-                    </div>
-
-                    <div class="version-card alpha">
-                        <div class="version-title">
-                            <div class="channel-icon" style="width: 2rem; height: 2rem; font-size: 1rem;">α</div>
-                            <h4>Alpha</h4>
-                            <span class="badge badge-alpha">Early Testing</span>
-                        </div>
-                        <div class="version-number">v3.2.0-alpha1</div>
-                        <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">Switch to alpha channel:</p>
-                        <div class="install-command">echo "deb https://stable.packages.apt.minaprotocol.com bullseye alpha" > /etc/apt/sources.list.d/mina.list
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('echo \"deb https://stable.packages.apt.minaprotocol.com bullseye alpha\\" > /etc/apt/sources.list.d/mina.list')">Copy</button>
-                        </div>
-                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Then install specific version:</p>
-                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina=3.2.0-alpha1*
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update && apt-get install -y mina=3.2.0-alpha1*')">Copy</button>
-                        </div>
-                        <ul class="package-list">
-                            <li>mina=3.2.0-alpha1* - Mainnet node (alpha)</li>
-                            <li>mina-devnet=3.2.0-alpha1* - Devnet node (alpha)</li>
-                            <li>mina-archive=3.2.0-alpha1* - Archive node (alpha)</li>
-                            <li>mina-rosetta=3.2.0-alpha1* - Rosetta API (alpha)</li>
+                            <li>mina-archive-mainnet=3.1.0* - Archive node (mainnet)</li>
+                            <li>mina-archive-devnet=3.1.0* - Archive node (devnet)</li>
+                            <li>mina-rosetta-mainnet=3.1.0* - Rosetta API (mainnet)</li>
+                            <li>mina-rosetta-devnet=3.1.0* - Rosetta API (devnet)</li>
                         </ul>
                     </div>
                 </div>
@@ -954,33 +837,33 @@
                         <h3><span class="step-number">1</span>Install Dependencies (Optional)</h3>
                         <p>Install required dependencies if not already present:</p>
                         <div class="code-block">apt-get install -y lsb-release ca-certificates wget gnupg
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get install -y lsb-release ca-certificates wget gnupg')">Copy</button>
+                            <button class="copy-button" onclick="copyToClipboard('apt-get install -y lsb-release ca-certificates wget gnupg', this)">Copy</button>
                         </div>
                         
                         <p>Update package cache:</p>
                         <div class="code-block">apt-get update
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update')">Copy</button>
+                            <button class="copy-button" onclick="copyToClipboard('apt-get update', this)">Copy</button>
                         </div>
                     </div>
 
                     <div class="step">
                         <h3><span class="step-number">2</span>Import Repository Signing Key</h3>
                         <p>Download and install the Mina repository signing key:</p>
-                        <div class="code-block">wget -q https://stable.packages.apt.minaprotocol.com/repo-signing-key.gpg -O /etc/apt/trusted.gpg.d/minaprotocol.gpg
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('wget -q https://stable.packages.apt.minaprotocol.com/repo-signing-key.gpg -O /etc/apt/trusted.gpg.d/minaprotocol.gpg')">Copy</button>
+                        <div class="code-block">wget -q https://stable.apt.packages.minaprotocol.com/repo-signing-key.gpg -O /etc/apt/trusted.gpg.d/minaprotocol.gpg
+                            <button class="copy-button" onclick="copyToClipboard('wget -q https://stable.apt.packages.minaprotocol.com/repo-signing-key.gpg -O /etc/apt/trusted.gpg.d/minaprotocol.gpg', this)">Copy</button>
                         </div>
                         
                         <p>Update package cache after adding the key:</p>
                         <div class="code-block">apt-get update
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update')">Copy</button>
+                            <button class="copy-button" onclick="copyToClipboard('apt-get update', this)">Copy</button>
                         </div>
                     </div>
 
                     <div class="step">
                         <h3><span class="step-number">3</span>Add Mina APT Repository</h3>
                         <p>Add the Mina stable APT repository:</p>
-                        <div class="code-block">echo "deb https://stable.packages.apt.minaprotocol.com bullseye stable" > /etc/apt/sources.list.d/mina.list
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('echo \"deb https://stable.packages.apt.minaprotocol.com bullseye stable\" > /etc/apt/sources.list.d/mina.list')">Copy</button>
+                        <div class="code-block">echo "deb https://stable.apt.packages.minaprotocol.com bullseye stable" > /etc/apt/sources.list.d/mina.list
+                            <button class="copy-button" onclick="copyToClipboard(&quot;echo \\&quot;deb https://stable.apt.packages.minaprotocol.com bullseye stable\\&quot; > /etc/apt/sources.list.d/mina.list&quot;, this)">Copy</button>
                         </div>
 
                         <div class="warning">
@@ -988,23 +871,19 @@
                             <br><br>
                             <strong>Auto-detect your codename:</strong>
                             <div class="code-block" style="margin: 0.5rem 0;">lsb_release -c
-                                <button class="copy-button" onclick="navigator.clipboard.writeText('lsb_release -c')">Copy</button>
+                                <button class="copy-button" onclick="copyToClipboard('lsb_release -c', this)">Copy</button>
                             </div>
                             <strong>Or use these common codenames:</strong>
                             <ul style="margin: 0.5rem 0 0 1.5rem;">
                                 <li><strong>Ubuntu 20.04:</strong> <code>focal</code></li>
+                                <li><strong>Ubuntu 22.04:</strong> <code>jammy</code></li>
                                 <li><strong>Ubuntu 24.04:</strong> <code>noble</code></li>
                                 <li><strong>Debian 11:</strong> <code>bullseye</code></li>
                                 <li><strong>Debian 12:</strong> <code>bookworm</code></li>
                             </ul>
                             <br>
-                            <strong>Switching between stable/beta/alpha channels:</strong>
-                            <br>To switch channels, modify the entry in <code>/etc/apt/sources.list.d/mina.list</code>:
-                            <ul style="margin: 0.5rem 0 0 1.5rem;">
-                                <li><strong>Stable:</strong> <code>deb https://stable.packages.apt.minaprotocol.com bullseye stable</code></li>
-                                <li><strong>Beta:</strong> <code>deb https://stable.packages.apt.minaprotocol.com bullseye beta</code></li>
-                                <li><strong>Alpha:</strong> <code>deb https://stable.packages.apt.minaprotocol.com bullseye alpha</code></li>
-                            </ul>
+                            <strong>Beta and Alpha channels:</strong>
+                            <br>For pre-release versions (beta and alpha), visit our <a href="https://unstable.apt.packages.minaprotocol.com" target="_blank" rel="noopener">unstable packages repository</a> which contains testing and development releases.
                         </div>
                     </div>
 
@@ -1012,15 +891,15 @@
                         <h3><span class="step-number">4</span>Install Mina Package</h3>
                         <p>Update package list and install Mina:</p>
                         <div class="code-block">apt-get update
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update')">Copy</button>
+                            <button class="copy-button" onclick="copyToClipboard('apt-get update', this)">Copy</button>
                         </div>
                         
-                        <div class="code-block">apt-get install -y mina
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get install -y mina')">Copy</button>
+                        <div class="code-block">apt-get install -y mina-mainnet
+                            <button class="copy-button" onclick="copyToClipboard('apt-get install -y mina-mainnet', this)">Copy</button>
                         </div>
                         
                         <div class="warning">
-                            <strong>Note:</strong> For other packages, replace <code>mina</code> with the appropriate package name from the table above (e.g., <code>mina-devnet</code>, <code>mina-archive</code>, etc.).
+                            <strong>Note:</strong> For other packages, replace <code>mina-mainnet</code> with the appropriate package name from the table above (e.g., <code>mina-devnet</code>, <code>mina-archive-mainnet</code>, <code>mina-rosetta-devnet</code>, etc.).
                         </div>
                     </div>
                 </div>
@@ -1048,5 +927,64 @@
             </div>
         </div>
     </footer>
+
+    <script>
+        function copyToClipboard(text, button) {
+            // Try the modern clipboard API first
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(function() {
+                    showCopySuccess(button);
+                }).catch(function() {
+                    // Fall back to the older method
+                    fallbackCopyToClipboard(text, button);
+                });
+            } else {
+                // Use fallback for local files and older browsers
+                fallbackCopyToClipboard(text, button);
+            }
+        }
+
+        function fallbackCopyToClipboard(text, button) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-999999px";
+            textArea.style.top = "-999999px";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showCopySuccess(button);
+                } else {
+                    showCopyError(button);
+                }
+            } catch (err) {
+                showCopyError(button);
+            }
+            
+            document.body.removeChild(textArea);
+        }
+
+        function showCopySuccess(button) {
+            const originalText = button.textContent;
+            button.textContent = 'Copied!';
+            button.classList.add('copy-success');
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.classList.remove('copy-success');
+            }, 2000);
+        }
+
+        function showCopyError(button) {
+            const originalText = button.textContent;
+            button.textContent = 'Copy failed';
+            setTimeout(() => {
+                button.textContent = originalText;
+            }, 2000);
+        }
+    </script>
 </body>
 </html>
