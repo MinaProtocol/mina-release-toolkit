@@ -205,6 +205,55 @@ cd ../dhall-buildkite && make check_examples
 - Uses `/var/storagebox/` as default mount point
 - Useful for local development and debugging
 
+## Deployment
+
+### Debian Repository Welcome Pages
+
+The toolkit includes automated deployment for Debian repository welcome pages located in `debian/repositories/`. These HTML pages provide installation instructions and package information for the three Mina channels:
+
+**Available Pages:**
+- `stable_packages_page.html` - Stable releases
+- `nightly_packages_page.html` - Nightly builds
+- `unstable_packages_page.html` - Development builds
+
+**Deployment Commands:**
+```bash
+cd debian/repositories
+
+# Test repository pages before deployment
+make test                    # Test all pages
+make test-stable            # Test stable page only
+make test-nightly           # Test nightly page only
+make test-unstable          # Test unstable page only
+
+# Deploy to AWS S3 + CloudFront
+make deploy-stable          # Deploy stable page
+make deploy-nightly         # Deploy nightly page
+make deploy-unstable        # Deploy unstable page
+make all                    # Deploy all pages
+
+# Test and deploy together
+make test-and-deploy        # Test and deploy all
+make test-and-deploy-stable # Test and deploy stable only
+
+# Dry run (show what would be deployed)
+make dry-run               # Dry run for all pages
+make dry-run-stable        # Dry run for stable page
+
+# Validate prerequisites
+make validate              # Check HTML files exist
+make check-aws            # Check AWS CLI availability
+```
+
+**AWS Configuration:**
+- Requires AWS CLI with appropriate permissions for S3 and CloudFront
+- Uses CloudFront distributions for CDN delivery
+- Automatic cache invalidation after deployment
+- Default AWS profile and us-west-2 region
+
+**Testing Framework:**
+The `test_from_html.sh` script automatically extracts installation commands from HTML files and validates them in Docker containers across multiple Debian/Ubuntu distributions.
+
 ## Contributing
 
 This monorepo follows standard Git submodule practices. When making changes:
