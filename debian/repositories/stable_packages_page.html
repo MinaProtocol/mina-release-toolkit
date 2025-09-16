@@ -87,7 +87,7 @@
 
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 2rem;
             margin-bottom: 3rem;
         }
@@ -687,11 +687,49 @@
                         <div class="version-annotation">
                             <small><span class="version-note">*</span> Supported starting from Mina version 3.1.0 and newer</small>
                             <br>
-                            <small><span class="version-note">**</span> Supported starting from Mina version 3.3.0 and newer</small>
+                            <small><span class="version-note">**</span> Supported starting from Mina version 3.3.0-alpha1 and newer</small>
                         </div>
                     </div>
                 </div>
 
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Supported Architectures</h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Architecture</th>
+                                        <th>Description</th>
+                                        <th>Support Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>amd64</strong></td>
+                                        <td>64-bit x86 processors (Intel/AMD)</td>
+                                        <td><span class="badge badge-stable">Full Support</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>arm64</strong></td>
+                                        <td>64-bit ARM processors (Apple Silicon, AWS Graviton)</td>
+                                        <td>
+                                            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                                <span class="badge badge-stable" style="font-size: 0.7rem;">Bookworm</span>
+                                                <span class="badge badge-stable" style="font-size: 0.7rem;">Noble</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid">
                 <div class="card">
                     <div class="card-header">
                         <h3>Available Packages</h3>

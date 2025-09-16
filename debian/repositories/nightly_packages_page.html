@@ -140,7 +140,7 @@
 
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 2rem;
             margin-bottom: 3rem;
         }
@@ -745,13 +745,57 @@
                     <div class="card-content">
                         <ul class="list">
                             <li>Ubuntu Focal (20.04 LTS)</li>
-                            <li>Ubuntu Noble (24.04 LTS)</li>
+                            <li>Ubuntu Jammy (22.04 LTS) <span class="version-note">*</span></li>
+                            <li>Ubuntu Noble (24.04 LTS) <span class="version-note">**</span></li>
                             <li>Debian Bullseye (11)</li>
-                            <li>Debian Bookworm (12)</li>
+                            <li>Debian Bookworm (12) <span class="version-note">**</span></li>
                         </ul>
+                        <div class="version-annotation">
+                            <small><span class="version-note">*</span> Supported starting from Mina version 3.3.0-alpha1 and newer</small>
+                            <br>
+                            <small><span class="version-note">**</span> Full support for bookworm and noble distributions</small>
+                        </div>
                     </div>
                 </div>
 
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Supported Architectures</h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Architecture</th>
+                                        <th>Description</th>
+                                        <th>Support Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>amd64</strong></td>
+                                        <td>64-bit x86 processors (Intel/AMD)</td>
+                                        <td><span class="badge badge-compatible">Full Support</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>arm64</strong></td>
+                                        <td>64-bit ARM processors (Apple Silicon, AWS Graviton)</td>
+                                        <td>
+                                            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                                <span class="badge badge-compatible" style="font-size: 0.7rem;">Bookworm</span>
+                                                <span class="badge badge-compatible" style="font-size: 0.7rem;">Noble</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid">
                 <div class="card">
                     <div class="card-header">
                         <h3>Available Packages & Channels</h3>
@@ -1087,9 +1131,10 @@
                             <strong>Or use these common codenames:</strong>
                             <ul style="margin: 0.5rem 0 0 1.5rem;">
                                 <li><strong>Ubuntu 20.04:</strong> <code>focal</code></li>
-                                <li><strong>Ubuntu 24.04:</strong> <code>noble</code></li>
+                                <li><strong>Ubuntu 22.04:</strong> <code>jammy</code> (from v3.3.0-alpha1)</li>
+                                <li><strong>Ubuntu 24.04:</strong> <code>noble</code> (full support)</li>
                                 <li><strong>Debian 11:</strong> <code>bullseye</code></li>
-                                <li><strong>Debian 12:</strong> <code>bookworm</code></li>
+                                <li><strong>Debian 12:</strong> <code>bookworm</code> (full support)</li>
                             </ul>
                         </div>
                     </div>
