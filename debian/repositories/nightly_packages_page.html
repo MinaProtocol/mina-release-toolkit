@@ -252,6 +252,11 @@
             color: #374151;
         }
 
+        .badge-mesa {
+            background: #e0e7ff;
+            color: #4338ca;
+        }
+
         .channel-description {
             margin-top: 1rem;
             padding: 1rem;
@@ -441,6 +446,10 @@
             background: linear-gradient(90deg, #ef4444, #dc2626);
         }
 
+        .channel-card.mesa::before {
+            background: linear-gradient(90deg, #6366f1, #4338ca);
+        }
+
         .channel-header {
             display: flex;
             align-items: center;
@@ -483,6 +492,10 @@
 
         .develop .channel-icon {
             background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+
+        .mesa .channel-icon {
+            background: linear-gradient(135deg, #6366f1, #4338ca);
         }
 
         .channel-meta {
@@ -561,6 +574,10 @@
             border-left-color: #ef4444;
         }
 
+        .mesa .highlight {
+            border-left-color: #6366f1;
+        }
+
         .badge-compatible {
             background: #dcfce7;
             color: #166534;
@@ -627,6 +644,10 @@
 
         .version-card.develop::before {
             background: #ef4444;
+        }
+
+        .version-card.mesa::before {
+            background: #6366f1;
         }
 
         .version-title {
@@ -711,6 +732,10 @@
         .copy-button:hover {
             background: #6272a4;
         }
+
+        .copy-success {
+            background: #10b981 !important;
+        }
     </style>
 </head>
 <body>
@@ -727,8 +752,8 @@
                     <div class="nightly-info">
                         <h3>🌙 Nightly Package Information</h3>
                         <p>Packages include build date in version format:</p>
-                        <div class="version-example">3.2.0-<span id="header-date"></span></div>
-                        <p><small>where 3.2.0 is the latest version and <span id="header-date-text"></span> is the date (YYYYMMDD)</small></p>
+                        <div class="version-example">3.2.0-YYYYMMDD</div>
+                        <p><small>where 3.2.0 is the base version and YYYYMMDD is the build date</small></p>
                     </div>
                 </div>
             </div>
@@ -814,37 +839,62 @@
                                     <tr>
                                         <td>Mina Node</td>
                                         <td><span class="badge badge-master">Master</span></td>
-                                        <td><code>mina</code></td>
+                                        <td><code>mina-devnet</code></td>
                                     </tr>
                                     <tr>
                                         <td>Mina Node</td>
                                         <td><span class="badge badge-compatible">Compatible</span></td>
-                                        <td><code>mina</code></td>
+                                        <td><code>mina-devnet</code></td>
                                     </tr>
                                     <tr>
                                         <td>Mina Node</td>
                                         <td><span class="badge badge-develop">Develop</span></td>
-                                        <td><code>mina</code></td>
+                                        <td><code>mina-devnet</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Mina Node</td>
+                                        <td><span class="badge badge-mesa">Mesa</span></td>
+                                        <td><code>mina-mesa</code></td>
                                     </tr>
                                     <tr>
                                         <td>Archive Node</td>
-                                        <td><span class="badge badge-universal">All Channels</span></td>
-                                        <td><code>mina-archive</code></td>
+                                        <td><span class="badge badge-master">Master</span></td>
+                                        <td><code>mina-archive-devnet</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Archive Node</td>
+                                        <td><span class="badge badge-compatible">Compatible</span></td>
+                                        <td><code>mina-archive-devnet</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Archive Node</td>
+                                        <td><span class="badge badge-develop">Develop</span></td>
+                                        <td><code>mina-archive-devnet</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Archive Node</td>
+                                        <td><span class="badge badge-mesa">Mesa</span></td>
+                                        <td><code>mina-archive-mesa</code></td>
                                     </tr>
                                     <tr>
                                         <td>Mina Rosetta Node</td>
                                         <td><span class="badge badge-master">Master</span></td>
-                                        <td><code>mina-rosetta</code></td>
+                                        <td><code>mina-rosetta-devnet</code></td>
                                     </tr>
                                     <tr>
                                         <td>Mina Rosetta Node</td>
                                         <td><span class="badge badge-compatible">Compatible</span></td>
-                                        <td><code>mina-rosetta</code></td>
+                                        <td><code>mina-rosetta-devnet</code></td>
                                     </tr>
                                     <tr>
                                         <td>Mina Rosetta Node</td>
                                         <td><span class="badge badge-develop">Develop</span></td>
-                                        <td><code>mina-rosetta</code></td>
+                                        <td><code>mina-rosetta-devnet</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Mina Rosetta Node</td>
+                                        <td><span class="badge badge-mesa">Mesa</span></td>
+                                        <td><code>mina-rosetta-mesa</code></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -994,6 +1044,51 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="channel-card mesa">
+                        <div class="channel-header">
+                            <div class="channel-title">
+                                <div class="channel-icon">🏔️</div>
+                                <h3>Mesa</h3>
+                                <span class="badge badge-mesa">Hardfork Branch</span>
+                            </div>
+                        </div>
+                        <div class="channel-meta">
+                            <div class="meta-item">
+                                <div class="meta-label">Network Target</div>
+                                <div class="meta-value">Mesa Hardfork</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Hardfork Required</div>
+                                <div class="meta-value">Yes</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Risk Level</div>
+                                <div class="meta-value">Medium</div>
+                            </div>
+                        </div>
+                        <div class="channel-description">
+                            <strong>Dedicated branch for Mesa hardfork testing and preparation.</strong> These packages contain all changes targeted to the Mesa hardfork, allowing node operators and developers to prepare for the upcoming network upgrade. Essential for testing Mesa-specific features and ensuring smooth transition during the hardfork event.
+                        </div>
+                        <div class="channel-highlights">
+                            <div class="highlight">
+                                <div class="highlight-title">🏔️ Mesa Hardfork</div>
+                                <div class="highlight-content">All changes targeted for Mesa network upgrade</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">🔄 Upgrade Preparation</div>
+                                <div class="highlight-content">Test and prepare for upcoming hardfork transition</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">🧪 Feature Testing</div>
+                                <div class="highlight-content">Early access to Mesa-specific protocol improvements</div>
+                            </div>
+                            <div class="highlight">
+                                <div class="highlight-title">📊 Network Readiness</div>
+                                <div class="highlight-content">Validate node compatibility before production hardfork</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -1009,19 +1104,19 @@
                             <h4>Compatible</h4>
                             <span class="badge badge-compatible">Network Safe</span>
                         </div>
-                        <div class="version-number">v3.2.0-alpha1-<span id="compatible-date"></span></div>
+                        <div class="version-number">v3.3.0-alpha1-YYYYMMDD*</div>
                         <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">Switch to compatible channel and install:</p>
                         <div class="install-command">echo "deb https://nightly.apt.packages.minaprotocol.com bullseye compatible" > /etc/apt/sources.list.d/mina.list
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('echo \"deb https://nightly.apt.packages.minaprotocol.com bullseye compatible\" > /etc/apt/sources.list.d/mina.list')">Copy</button>
+                            <button class="copy-button" onclick="copyToClipboard(&quot;echo \&quot;deb https://nightly.apt.packages.minaprotocol.com bullseye compatible\&quot; > /etc/apt/sources.list.d/mina.list&quot;, this)">Copy</button>
                         </div>
-                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Then install mina package:</p>
-                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update && apt-get install -y mina')">Copy</button>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Then update to latest version:</p>
+                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina-devnet
+                            <button class="copy-button" onclick="copyToClipboard('apt-get update && apt-get install -y mina-devnet', this)">Copy</button>
                         </div>
                         <ul class="package-list">
-                            <li>mina - Compatible mainnet node</li>
-                            <li>mina-rosetta - Compatible Rosetta API</li>
-                            <li>mina-archive - Archive node (universal)</li>
+                            <li>mina-devnet - Compatible devnet node</li>
+                            <li>mina-rosetta-devnet - Compatible Rosetta API</li>
+                            <li>mina-archive-devnet - Archive node devnet</li>
                         </ul>
                     </div>
 
@@ -1031,19 +1126,19 @@
                             <h4>Master</h4>
                             <span class="badge badge-master">Critical Patches</span>
                         </div>
-                        <div class="version-number">v3.1.0-<span id="master-date"></span></div>
+                        <div class="version-number">v3.2.0-YYYYMMDD*</div>
                         <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">Switch to master channel and install:</p>
                         <div class="install-command">echo "deb https://nightly.apt.packages.minaprotocol.com bullseye master" > /etc/apt/sources.list.d/mina.list
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('echo \"deb https://nightly.apt.packages.minaprotocol.com bullseye master\" > /etc/apt/sources.list.d/mina.list')">Copy</button>
+                            <button class="copy-button" onclick="copyToClipboard(&quot;echo \&quot;deb https://nightly.apt.packages.minaprotocol.com bullseye master\&quot; > /etc/apt/sources.list.d/mina.list&quot;, this)">Copy</button>
                         </div>
-                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Then install mina package:</p>
-                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update && apt-get install -y mina')">Copy</button>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Then update to latest version:</p>
+                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina-devnet
+                            <button class="copy-button" onclick="copyToClipboard('apt-get update && apt-get install -y mina-devnet', this)">Copy</button>
                         </div>
                         <ul class="package-list">
-                            <li>mina - Master channel mainnet node</li>
-                            <li>mina-rosetta - Master channel Rosetta API</li>
-                            <li>mina-archive - Archive node (universal)</li>
+                            <li>mina-devnet - Master channel devnet node</li>
+                            <li>mina-rosetta-devnet - Master channel Rosetta API</li>
+                            <li>mina-archive-devnet - Archive node devnet</li>
                         </ul>
                     </div>
 
@@ -1053,21 +1148,58 @@
                             <h4>Develop</h4>
                             <span class="badge badge-develop">Experimental</span>
                         </div>
-                        <div class="version-number">v3.2.0-alpha1-<span id="develop-date"></span></div>
+                        <div class="version-number">v3.3.0-alpha1-YYYYMMDD*</div>
                         <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">Switch to develop channel and install:</p>
                         <div class="install-command">echo "deb https://nightly.apt.packages.minaprotocol.com bullseye develop" > /etc/apt/sources.list.d/mina.list
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('echo \"deb https://nightly.apt.packages.minaprotocol.com bullseye develop\" > /etc/apt/sources.list.d/mina.list')">Copy</button>
+                            <button class="copy-button" onclick="copyToClipboard(&quot;echo \&quot;deb https://nightly.apt.packages.minaprotocol.com bullseye develop\&quot; > /etc/apt/sources.list.d/mina.list&quot;, this)">Copy</button>
                         </div>
-                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Then install mina package:</p>
-                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update && apt-get install -y mina')">Copy</button>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Then update to latest version:</p>
+                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina-devnet
+                            <button class="copy-button" onclick="copyToClipboard('apt-get update && apt-get install -y mina-devnet', this)">Copy</button>
                         </div>
                         <ul class="package-list">
-                            <li>mina - Development mainnet node</li>
-                            <li>mina-rosetta - Development Rosetta API</li>
-                            <li>mina-archive - Archive node (universal)</li>
+                            <li>mina-devnet - Development devnet node</li>
+                            <li>mina-rosetta-devnet - Development Rosetta API</li>
+                            <li>mina-archive-devnet - Archive node devnet</li>
                         </ul>
                     </div>
+
+                    <div class="version-card mesa">
+                        <div class="version-title">
+                            <div class="channel-icon" style="width: 2rem; height: 2rem; font-size: 1rem;">🏔️</div>
+                            <h4>Mesa</h4>
+                            <span class="badge badge-mesa">Hardfork</span>
+                        </div>
+                        <div class="version-number">v4.0.0-mesa-YYYYMMDD*</div>
+                        <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">Switch to mesa channel and install:</p>
+                        <div class="install-command">echo "deb https://nightly.apt.packages.minaprotocol.com bullseye mesa" > /etc/apt/sources.list.d/mina.list
+                            <button class="copy-button" onclick="copyToClipboard(&quot;echo \&quot;deb https://nightly.apt.packages.minaprotocol.com bullseye mesa\&quot; > /etc/apt/sources.list.d/mina.list&quot;, this)">Copy</button>
+                        </div>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Then update to latest version:</p>
+                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina-mesa
+                            <button class="copy-button" onclick="copyToClipboard('apt-get update && apt-get install -y mina-mesa', this)">Copy</button>
+                        </div>
+                        <ul class="package-list">
+                            <li>mina-mesa - Mesa hardfork node</li>
+                            <li>mina-rosetta-mesa - Mesa Rosetta API</li>
+                            <li>mina-archive-mesa - Archive node mesa</li>
+                        </ul>
+                    </div>
+                </div>
+                <div style="margin: 2rem auto; max-width: 800px; padding: 1.5rem; background: #fffbeb; border-radius: var(--border-radius); border-left: 4px solid var(--warning-color);">
+                    <h3 style="color: #92400e; font-size: 1.1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 1.5rem;">ℹ️</span>
+                        Important: Nightly Build Information
+                    </h3>
+                    <p style="font-size: 0.95rem; color: #92400e; margin-bottom: 0.75rem;">
+                        <strong>* YYYYMMDD represents the build date</strong> in the format Year-Month-Day (e.g., 20251127 for November 27, 2025). This timestamp indicates when the package was built.
+                    </p>
+                    <p style="font-size: 0.95rem; color: #92400e; margin-bottom: 0.75rem;">
+                        <strong>New builds are not guaranteed every day.</strong> The actual date in the package version represents when that specific build was created, which may not be the current date.
+                    </p>
+                    <p style="font-size: 0.95rem; color: #92400e; margin: 0;">
+                        <strong>Recommendation:</strong> Instead of installing a specific version, use <code style="background: #fef3c7; padding: 0.25rem 0.5rem; border-radius: 4px;">apt-get install</code> or <code style="background: #fef3c7; padding: 0.25rem 0.5rem; border-radius: 4px;">apt-get upgrade</code> to always get the latest available version from your selected channel.
+                    </p>
                 </div>
             </section>
 
@@ -1080,12 +1212,12 @@
                         <h3><span class="step-number">1</span>Install Dependencies (Optional)</h3>
                         <p>Install required dependencies if not already present:</p>
                         <div class="code-block">apt-get install -y lsb-release ca-certificates wget gnupg
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get install -y lsb-release ca-certificates wget gnupg')">Copy</button>
+                            <button class="copy-button" onclick="copyToClipboard('apt-get install -y lsb-release ca-certificates wget gnupg', this)">Copy</button>
                         </div>
                         
                         <p>Update package cache:</p>
                         <div class="code-block">apt-get update
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update')">Copy</button>
+                            <button class="copy-button" onclick="copyToClipboard('apt-get update', this)">Copy</button>
                         </div>
                     </div>
 
@@ -1093,12 +1225,12 @@
                         <h3><span class="step-number">2</span>Import Repository Signing Key</h3>
                         <p>Download and install the Mina repository signing key:</p>
                         <div class="code-block">wget -q https://nightly.apt.packages.minaprotocol.com/repo-signing-key.gpg -O /etc/apt/trusted.gpg.d/minaprotocol.gpg
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('wget -q https://nightly.apt.packages.minaprotocol.com/repo-signing-key.gpg -O /etc/apt/trusted.gpg.d/minaprotocol.gpg')">Copy</button>
+                            <button class="copy-button" onclick="copyToClipboard('wget -q https://nightly.apt.packages.minaprotocol.com/repo-signing-key.gpg -O /etc/apt/trusted.gpg.d/minaprotocol.gpg', this)">Copy</button>
                         </div>
                         
                         <p>Update package cache after adding the key:</p>
                         <div class="code-block">apt-get update
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update')">Copy</button>
+                            <button class="copy-button" onclick="copyToClipboard('apt-get update', this)">Copy</button>
                         </div>
                     </div>
 
@@ -1108,17 +1240,22 @@
                         
                         <h5 style="font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.5rem 0; color: var(--text-primary);">For Compatible Channel (recommended):</h5>
                         <div class="code-block">echo "deb https://nightly.apt.packages.minaprotocol.com bullseye compatible" > /etc/apt/sources.list.d/mina.list
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('echo \"deb https://nightly.apt.packages.minaprotocol.com bullseye compatible\" > /etc/apt/sources.list.d/mina.list')">Copy</button>
+                            <button class="copy-button" onclick="copyToClipboard(&quot;echo \&quot;deb https://nightly.apt.packages.minaprotocol.com bullseye compatible\&quot; > /etc/apt/sources.list.d/mina.list&quot;, this)">Copy</button>
                         </div>
 
                         <h5 style="font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.5rem 0; color: var(--text-primary);">For Master Channel:</h5>
                         <div class="code-block">echo "deb https://nightly.apt.packages.minaprotocol.com bullseye master" > /etc/apt/sources.list.d/mina.list
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('echo \"deb https://nightly.apt.packages.minaprotocol.com bullseye master\" > /etc/apt/sources.list.d/mina.list')">Copy</button>
+                            <button class="copy-button" onclick="copyToClipboard(&quot;echo \&quot;deb https://nightly.apt.packages.minaprotocol.com bullseye master\&quot; > /etc/apt/sources.list.d/mina.list&quot;, this)">Copy</button>
                         </div>
 
                         <h5 style="font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.5rem 0; color: var(--text-primary);">For Develop Channel:</h5>
                         <div class="code-block">echo "deb https://nightly.apt.packages.minaprotocol.com bullseye develop" > /etc/apt/sources.list.d/mina.list
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('echo \"deb https://nightly.apt.packages.minaprotocol.com bullseye develop\" > /etc/apt/sources.list.d/mina.list')">Copy</button>
+                            <button class="copy-button" onclick="copyToClipboard(&quot;echo \&quot;deb https://nightly.apt.packages.minaprotocol.com bullseye develop\&quot; > /etc/apt/sources.list.d/mina.list&quot;, this)">Copy</button>
+                        </div>
+
+                        <h5 style="font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.5rem 0; color: var(--text-primary);">For Mesa Channel (Hardfork Branch):</h5>
+                        <div class="code-block">echo "deb https://nightly.apt.packages.minaprotocol.com bullseye mesa" > /etc/apt/sources.list.d/mina.list
+                            <button class="copy-button" onclick="copyToClipboard(&quot;echo \&quot;deb https://nightly.apt.packages.minaprotocol.com bullseye mesa\&quot; > /etc/apt/sources.list.d/mina.list&quot;, this)">Copy</button>
                         </div>
 
                         <div class="warning">
@@ -1126,7 +1263,7 @@
                             <br><br>
                             <strong>Auto-detect your codename:</strong>
                             <div class="code-block" style="margin: 0.5rem 0;">lsb_release -c
-                                <button class="copy-button" onclick="navigator.clipboard.writeText('lsb_release -c')">Copy</button>
+                                <button class="copy-button" onclick="copyToClipboard('lsb_release -c', this)">Copy</button>
                             </div>
                             <strong>Or use these common codenames:</strong>
                             <ul style="margin: 0.5rem 0 0 1.5rem;">
@@ -1143,11 +1280,17 @@
                         <h3><span class="step-number">4</span>Install Mina Package</h3>
                         <p>Update package list and install Mina:</p>
                         <div class="code-block">apt-get update
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get update')">Copy</button>
+                            <button class="copy-button" onclick="copyToClipboard('apt-get update', this)">Copy</button>
                         </div>
-                        
-                        <div class="code-block">apt-get install -y mina
-                            <button class="copy-button" onclick="navigator.clipboard.writeText('apt-get install -y mina')">Copy</button>
+
+                        <p style="margin-top: 1rem;">For devnet channels (compatible, master, develop):</p>
+                        <div class="code-block">apt-get install -y mina-devnet
+                            <button class="copy-button" onclick="copyToClipboard('apt-get install -y mina-devnet', this)">Copy</button>
+                        </div>
+
+                        <p style="margin-top: 1rem;">For mesa channel:</p>
+                        <div class="code-block">apt-get install -y mina-mesa
+                            <button class="copy-button" onclick="copyToClipboard('apt-get install -y mina-mesa', this)">Copy</button>
                         </div>
                     </div>
                 </div>
@@ -1177,34 +1320,62 @@
     </footer>
 
     <script>
-        // Generate current date in YYYYMMDD format
-        function getCurrentDateString() {
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const day = String(now.getDate()).padStart(2, '0');
-            return year + month + day;
+        function copyToClipboard(text, button) {
+            // Try the modern clipboard API first
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(function() {
+                    showCopySuccess(button);
+                }).catch(function() {
+                    // Fall back to the older method
+                    fallbackCopyToClipboard(text, button);
+                });
+            } else {
+                // Use fallback for local files and older browsers
+                fallbackCopyToClipboard(text, button);
+            }
         }
 
-        // Populate all date placeholders
-        document.addEventListener('DOMContentLoaded', function() {
-            const currentDate = getCurrentDateString();
-            
-            // Update header example
-            const headerDate = document.getElementById('header-date');
-            const headerDateText = document.getElementById('header-date-text');
-            if (headerDate) headerDate.textContent = currentDate;
-            if (headerDateText) headerDateText.textContent = currentDate;
-            
-            // Update version cards
-            const compatibleDate = document.getElementById('compatible-date');
-            const masterDate = document.getElementById('master-date');
-            const developDate = document.getElementById('develop-date');
-            
-            if (compatibleDate) compatibleDate.textContent = currentDate;
-            if (masterDate) masterDate.textContent = currentDate;
-            if (developDate) developDate.textContent = currentDate;
-        });
+        function fallbackCopyToClipboard(text, button) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-999999px";
+            textArea.style.top = "-999999px";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showCopySuccess(button);
+                } else {
+                    showCopyError(button);
+                }
+            } catch (err) {
+                showCopyError(button);
+            }
+
+            document.body.removeChild(textArea);
+        }
+
+        function showCopySuccess(button) {
+            const originalText = button.textContent;
+            button.textContent = 'Copied!';
+            button.classList.add('copy-success');
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.classList.remove('copy-success');
+            }, 2000);
+        }
+
+        function showCopyError(button) {
+            const originalText = button.textContent;
+            button.textContent = 'Copy failed';
+            setTimeout(() => {
+                button.textContent = originalText;
+            }, 2000);
+        }
     </script>
 </body>
 </html>
