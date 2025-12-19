@@ -247,7 +247,7 @@
             color: #374151;
         }
 
-        .badge-canary {
+        .badge-preflight {
             background: #ede9fe;
             color: #6b21a8;
         }
@@ -501,7 +501,7 @@
             background: linear-gradient(90deg, #ef4444, #dc2626);
         }
 
-        .channel-card.canary::before {
+        .channel-card.preflight::before {
             background: linear-gradient(90deg, #8b5cf6, #7c3aed);
         }
 
@@ -549,7 +549,7 @@
             background: linear-gradient(135deg, #ef4444, #dc2626);
         }
 
-        .canary .channel-icon {
+        .preflight .channel-icon {
             background: linear-gradient(135deg, #8b5cf6, #7c3aed);
         }
 
@@ -629,7 +629,7 @@
             border-left-color: #ef4444;
         }
 
-        .canary .highlight {
+        .preflight .highlight {
             border-left-color: #8b5cf6;
         }
 
@@ -686,7 +686,7 @@
             background: #ef4444;
         }
 
-        .version-card.canary::before {
+        .version-card.preflight::before {
             background: #8b5cf6;
         }
 
@@ -770,7 +770,7 @@
             color: #991b1b;
         }
 
-        .badge-canary {
+        .badge-preflight {
             background: #ede9fe;
             color: #6b21a8;
         }
@@ -996,13 +996,13 @@
                                             <td>
                                                 <div style="display: flex; align-items: center; gap: 0.5rem;">
                                                     <span style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: white; width: 1.5rem; height: 1.5rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold;">🐤</span>
-                                                    <strong>Canary</strong>
-                                                    <span class="badge badge-canary">Experimental</span>
+                                                    <strong>Preflight</strong>
+                                                    <span class="badge badge-preflight">Experimental</span>
                                                 </div>
                                             </td>
                                             <td><span class="badge badge-alpha">High</span></td>
                                             <td><span class="badge badge-universal">Mesa*</span></td>
-                                            <td><code style="background: var(--code-bg); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.85rem;">v4.0.0-canary1</code></td>
+                                            <td><code style="background: var(--code-bg); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.85rem;">v4.0.0-preflight1</code></td>
                                             <td>Experimental builds for forward-compatibility testing. Breakage expected, internal adoption first</td>
                                         </tr>
                                     </tbody>
@@ -1107,12 +1107,12 @@
                         </div>
                     </div>
 
-                    <div class="channel-card canary">
+                    <div class="channel-card preflight">
                         <div class="channel-header">
                             <div class="channel-title">
                                 <div class="channel-icon">🐤</div>
-                                <h3>Canary</h3>
-                                <span class="badge badge-canary">Experimental</span>
+                                <h3>Preflight</h3>
+                                <span class="badge badge-preflight">Experimental</span>
                             </div>
                         </div>
                         <div class="channel-meta">
@@ -1126,7 +1126,7 @@
                             </div>
                         </div>
                         <div class="channel-description">
-                            <strong>Experimental builds for forward-compatibility testing and early upgrade validation.</strong> Canary releases are used to test if new builds work before promoting to alpha. These packages may break and should be used for internal adoption first. Breakage is expected as these releases help identify issues early in the development cycle.
+                            <strong>Experimental builds for forward-compatibility testing and early upgrade validation.</strong> Preflight releases are used to test if new builds work before promoting to alpha. These packages may break and should be used for internal adoption first. Breakage is expected as these releases help identify issues early in the development cycle.
                         </div>
                         <div class="channel-highlights">
                             <div class="highlight">
@@ -1212,25 +1212,25 @@
                         </ul>
                     </div>
 
-                    <div class="version-card canary">
+                    <div class="version-card preflight">
                         <div class="version-title">
                             <div class="channel-icon" style="width: 2rem; height: 2rem; font-size: 1rem;">🐤</div>
-                            <h4>Canary</h4>
-                            <span class="badge badge-canary">Experimental</span>
+                            <h4>Preflight</h4>
+                            <span class="badge badge-preflight">Experimental</span>
                         </div>
-                        <div class="version-number">v4.0.0-canary1</div>
-                        <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">Switch to canary channel:</p>
-                        <div class="install-command">echo "deb https://unstable.apt.packages.minaprotocol.com bullseye canary" > /etc/apt/sources.list.d/mina.list
-                            <button class="copy-button" onclick="copyToClipboard(&quot;echo \&quot;deb https://unstable.apt.packages.minaprotocol.com bullseye canary\&quot; > /etc/apt/sources.list.d/mina.list&quot;, this)">Copy</button>
+                        <div class="version-number">v4.0.0-preflight1</div>
+                        <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">Switch to preflight channel:</p>
+                        <div class="install-command">echo "deb https://unstable.apt.packages.minaprotocol.com bullseye preflight" > /etc/apt/sources.list.d/mina.list
+                            <button class="copy-button" onclick="copyToClipboard(&quot;echo \&quot;deb https://unstable.apt.packages.minaprotocol.com bullseye preflight\&quot; > /etc/apt/sources.list.d/mina.list&quot;, this)">Copy</button>
                         </div>
                         <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Then install specific version:</p>
-                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina-mesa=4.0.0-canary1*
-                            <button class="copy-button" onclick="copyToClipboard('apt-get update && apt-get install -y mina-mesa=4.0.0-canary1*', this)">Copy</button>
+                        <div class="install-command" style="margin-top: 0.5rem;">apt-get update && apt-get install -y mina-mesa=4.0.0-preflight1*
+                            <button class="copy-button" onclick="copyToClipboard('apt-get update && apt-get install -y mina-mesa=4.0.0-preflight1*', this)">Copy</button>
                         </div>
                         <ul class="package-list">
-                            <li>mina-mesa=4.0.0-canary1* - Mesa node (canary)</li>
-                            <li>mina-archive-mesa=4.0.0-canary1* - Archive node mesa (canary)</li>
-                            <li>mina-rosetta-mesa=4.0.0-canary1* - Rosetta API mesa (canary)</li>
+                            <li>mina-mesa=4.0.0-preflight1* - Mesa node (preflight)</li>
+                            <li>mina-archive-mesa=4.0.0-preflight1* - Archive node mesa (preflight)</li>
+                            <li>mina-rosetta-mesa=4.0.0-preflight1* - Rosetta API mesa (preflight)</li>
                         </ul>
                     </div>
                 </div>
