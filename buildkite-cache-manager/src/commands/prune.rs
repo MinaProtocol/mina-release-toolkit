@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
 use chrono::{Duration, Utc};
@@ -196,8 +197,9 @@ pub fn parse_duration(s: &str) -> Result<Duration> {
 /// Compare two strings as version numbers.
 /// Extracts numeric parts and compares them; falls back to lexicographic.
 fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
+    static DIGIT_RE: OnceLock<Regex> = OnceLock::new();
     let extract = |s: &str| -> Vec<u64> {
-        let re = Regex::new(r"\d+").unwrap();
+        let re = DIGIT_RE.get_or_init(|| Regex::new(r"\d+").expect("static regex"));
         re.find_iter(s)
             .filter_map(|m| m.as_str().parse().ok())
             .collect()
