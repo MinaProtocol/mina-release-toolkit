@@ -1,0 +1,46 @@
+name: Schema Drift Check
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  detect-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check Buildkite schema drift
+        run: |
+          set -euo pipefail
+
+          read_schema_const() {
+            python - "$1" <<'PY'
+import pathlib, re, sys
+pattern = sys.argv[1]
+data = pathlib.Path('src/version.rs').read_text()
+match = re.search(pattern, data)
+if not match:
+    sys.exit(f"Unable to find pattern: {pattern}")
+print(match.group(1))
+PY
+          }
+
+          SCHEMA_URL=$(read_schema_const 'SCHEMA_URL: &str = "([^"]+)"')
+          SCHEMA_REPO=$(read_schema_const 'SCHEMA_REPO: &str = "([^"]+)"')
+
+          OWNER_REPO=${SCHEMA_REPO#https://github.com/}
+          LATEST_URL="https://raw.githubusercontent.com/${OWNER_REPO}/main/schema.json"
+
+          curl -fsSL "$SCHEMA_URL" -o tracked-schema.json
+          curl -fsSL "$LATEST_URL" -o latest-schema.json
+
+          if ! diff -u tracked-schema.json latest-schema.json > schema.diff; then
+            echo "Buildkite schema drift detected."
+            cat schema.diff
+            exit 1
+          fi
+
+          echo "Schema is up to date with upstream main."

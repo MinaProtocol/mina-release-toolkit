@@ -55,7 +55,7 @@ jobs:
       run: |
         cd debian/repositories
         echo "🧪 Testing ${{ matrix.html_file }} on ${{ matrix.distro }}"
-        ./test_from_html.sh --html ${{ matrix.html_file }} --distro ${{ matrix.distro }}
+        ./test_from_html.sh --html ${{ matrix.html_file }} --distribution ${{ matrix.distro }}
       timeout-minutes: 20
 
     - name: Verify Mina installation in container

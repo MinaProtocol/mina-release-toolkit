@@ -1,0 +1,35 @@
+[package]
+name = "buildkite-pipeline"
+version = "0.1.0"
+edition = "2021"
+description = "Rust bindings for Buildkite pipeline configuration - DSL for creating CI pipelines"
+license = "MIT"
+repository = "https://github.com/MinaProtocol/mina-release-toolkit"
+keywords = ["buildkite", "ci", "pipeline", "dsl"]
+categories = ["development-tools", "config"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+indexmap = { version = "2.0", features = ["serde"] }
+regress = { version = "=0.10.3", default-features = false, features = ["std"] }
+clap = { version = "4.5", features = ["derive"] }
+ureq = { version = "=2.9.6", default-features = false, features = ["tls", "json"] }
+similar = "2.6"
+regex = "1.11"
+anyhow = "1.0"
+serde_json = "1.0"
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+
+[build-dependencies]
+typify = { git = "https://github.com/oxidecomputer/typify", rev = "4bffebfaa538108cd041e677f2fdca159eee2119" }
+serde_json = "1.0"
+prettyplease = "0.2"
+syn = { version = "2.0", features = ["full"] }
+regress = { version = "=0.10.3", default-features = false, features = ["std"] }
+schemars = "0.8"
+
+[features]
+default = []

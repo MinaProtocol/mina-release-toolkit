@@ -38,7 +38,7 @@ jobs:
         docker run --rm -v $PWD:/workspace -w /workspace ${{ matrix.distro }} bash -c "
           apt-get update && 
           apt-get install -y curl gnupg2 software-properties-common wget &&
-          ./test_from_html.sh --html ${{ matrix.repository }}_packages_page.html --distro ${{ matrix.distro }}
+          ./test_from_html.sh --html ${{ matrix.repository }}_packages_page.html --distribution ${{ matrix.distro }}
         "
     
     - name: Validate HTML syntax
