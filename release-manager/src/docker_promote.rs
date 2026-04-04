@@ -1,4 +1,4 @@
-use crate::errors::{ManagerResult, ManagerError};
+use crate::errors::{ManagerError, ManagerResult};
 use tokio::process::Command as AsyncCommand;
 
 /// Configuration for Docker image promotion
@@ -39,7 +39,10 @@ impl DockerPromoter {
             println!("    📦 Name: {}", self.config.name);
             println!("    🏷️  Source: {}", self.config.source_version);
             println!("    🎯 Target: {}", self.config.target_version);
-            println!("    🌐 Publish to docker.io: {}", self.config.publish_to_docker_io);
+            println!(
+                "    🌐 Publish to docker.io: {}",
+                self.config.publish_to_docker_io
+            );
         }
 
         let config = if self.config.publish_to_docker_io {
@@ -73,13 +76,19 @@ impl DockerPromoter {
     /// Validate configuration parameters
     fn validate_config(&self) -> ManagerResult<()> {
         if self.config.name.is_empty() {
-            return Err(ManagerError::ValidationError("Name cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Name cannot be empty".to_string(),
+            ));
         }
         if self.config.source_version.is_empty() {
-            return Err(ManagerError::ValidationError("Source version cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Source version cannot be empty".to_string(),
+            ));
         }
         if self.config.target_version.is_empty() {
-            return Err(ManagerError::ValidationError("Target version cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Target version cannot be empty".to_string(),
+            ));
         }
         Ok(())
     }
@@ -135,15 +144,15 @@ impl DockerRegistryManager {
     pub async fn cross_registry_promote(&self) -> ManagerResult<()> {
         self.validate_config()?;
 
-        let source_image = format!("{}/{}:{}", 
-                                  self.config.source_registry, 
-                                  self.config.image_name, 
-                                  self.config.source_tag);
-        
-        let target_image = format!("{}/{}:{}", 
-                                  self.config.target_registry, 
-                                  self.config.image_name, 
-                                  self.config.target_tag);
+        let source_image = format!(
+            "{}/{}:{}",
+            self.config.source_registry, self.config.image_name, self.config.source_tag
+        );
+
+        let target_image = format!(
+            "{}/{}:{}",
+            self.config.target_registry, self.config.image_name, self.config.target_tag
+        );
 
         println!(" 🔄 Cross-registry promotion:");
         println!("    📥 Source: {}", source_image);
@@ -169,13 +178,16 @@ impl DockerRegistryManager {
         let mut cmd = AsyncCommand::new("docker");
         cmd.arg("pull").arg(image);
 
-        let output = cmd.output().await
+        let output = cmd
+            .output()
+            .await
             .map_err(|e| ManagerError::CommandFailed(format!("Failed to pull image: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(ManagerError::CommandFailed(format!(
-                "Docker pull failed: {}", stderr
+                "Docker pull failed: {}",
+                stderr
             )));
         }
 
@@ -189,13 +201,16 @@ impl DockerRegistryManager {
         let mut cmd = AsyncCommand::new("docker");
         cmd.arg("tag").arg(source).arg(target);
 
-        let output = cmd.output().await
+        let output = cmd
+            .output()
+            .await
             .map_err(|e| ManagerError::CommandFailed(format!("Failed to tag image: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(ManagerError::CommandFailed(format!(
-                "Docker tag failed: {}", stderr
+                "Docker tag failed: {}",
+                stderr
             )));
         }
 
@@ -209,13 +224,16 @@ impl DockerRegistryManager {
         let mut cmd = AsyncCommand::new("docker");
         cmd.arg("push").arg(image);
 
-        let output = cmd.output().await
+        let output = cmd
+            .output()
+            .await
             .map_err(|e| ManagerError::CommandFailed(format!("Failed to push image: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(ManagerError::CommandFailed(format!(
-                "Docker push failed: {}", stderr
+                "Docker push failed: {}",
+                stderr
             )));
         }
 
@@ -225,19 +243,29 @@ impl DockerRegistryManager {
     /// Validate configuration
     fn validate_config(&self) -> ManagerResult<()> {
         if self.config.source_registry.is_empty() {
-            return Err(ManagerError::ValidationError("Source registry cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Source registry cannot be empty".to_string(),
+            ));
         }
         if self.config.target_registry.is_empty() {
-            return Err(ManagerError::ValidationError("Target registry cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Target registry cannot be empty".to_string(),
+            ));
         }
         if self.config.image_name.is_empty() {
-            return Err(ManagerError::ValidationError("Image name cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Image name cannot be empty".to_string(),
+            ));
         }
         if self.config.source_tag.is_empty() {
-            return Err(ManagerError::ValidationError("Source tag cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Source tag cannot be empty".to_string(),
+            ));
         }
         if self.config.target_tag.is_empty() {
-            return Err(ManagerError::ValidationError("Target tag cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Target tag cannot be empty".to_string(),
+            ));
         }
         Ok(())
     }

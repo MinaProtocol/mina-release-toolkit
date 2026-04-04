@@ -1,10 +1,13 @@
+use crate::artifacts::{
+    calculate_debian_version, calculate_docker_tag, get_artifact_with_suffix, get_suffix,
+    parse_artifact_list, parse_string_list, Artifact,
+};
 use crate::cli::PromoteArgs;
-use crate::artifacts::{parse_artifact_list, parse_string_list, get_artifact_with_suffix, calculate_debian_version, calculate_docker_tag, get_suffix, Artifact};
-use crate::utils::{validate_required_args, print_operation_info};
-use crate::errors::ManagerResult;
 use crate::docker_promote::promote_docker_image;
-use crate::verification::{verify_docker_image, verify_debian_package};
+use crate::errors::ManagerResult;
 use crate::reversion;
+use crate::utils::{print_operation_info, validate_required_args};
+use crate::verification::{verify_debian_package, verify_docker_image};
 use colored::*;
 
 pub async fn execute(args: PromoteArgs) -> ManagerResult<()> {
@@ -13,19 +16,19 @@ pub async fn execute(args: PromoteArgs) -> ManagerResult<()> {
         ("target-version", Some(&args.target_version)),
         ("source-version", Some(&args.source_version)),
     ])?;
-    
+
     if !args.only_dockers {
         validate_required_args(&[
             ("source-channel", args.source_channel.as_ref()),
             ("target-channel", args.target_channel.as_ref()),
         ])?;
     }
-    
+
     // Parse lists
     let artifacts = parse_artifact_list(&args.artifacts)?;
     let networks = parse_string_list(&args.networks);
     let codenames = parse_string_list(&args.codenames);
-    
+
     // Print operation info
     let publish_to_docker_io_str = args.publish_to_docker_io.to_string();
     let only_dockers_str = args.only_dockers.to_string();
@@ -33,7 +36,7 @@ pub async fn execute(args: PromoteArgs) -> ManagerResult<()> {
     let verify_str = args.verify.to_string();
     let dry_run_str = args.dry_run.to_string();
     let strip_network_str = args.strip_network_from_archive.to_string();
-    
+
     let mut params = vec![
         ("Promoting artifacts", args.artifacts.as_str()),
         ("Networks", args.networks.as_str()),
@@ -45,7 +48,7 @@ pub async fn execute(args: PromoteArgs) -> ManagerResult<()> {
         ("Dry run", dry_run_str.as_str()),
         ("Strip network from archive", strip_network_str.as_str()),
     ];
-    
+
     if !args.only_dockers {
         if let Some(ref source_channel) = args.source_channel {
             params.push(("Source channel", source_channel.as_str()));
@@ -56,16 +59,16 @@ pub async fn execute(args: PromoteArgs) -> ManagerResult<()> {
         params.push(("Source version", args.source_version.as_str()));
         params.push(("Target version", args.target_version.as_str()));
     }
-    
+
     print_operation_info("Promoting mina artifacts", &params);
-    
+
     // Warning if source and target versions are the same
     if args.source_version == args.target_version {
         println!(" ⚠️  Warning: Source version and target version are the same.");
         println!("    Script will do promotion but it won't have an effect at the end unless you are publishing dockers from gcr.io to docker.io ...");
         println!();
     }
-    
+
     // Process each artifact
     for artifact in &artifacts {
         for codename in &codenames {
@@ -85,14 +88,17 @@ pub async fn execute(args: PromoteArgs) -> ManagerResult<()> {
                             &args.debian_repo,
                             args.debian_sign_key.as_deref(),
                             args.debug,
-                        ).await?;
+                        )
+                        .await?;
                     }
-                    
+
                     if !args.only_debians {
-                        println!("   ℹ️  There is no mina-logproc docker image to promote. skipping");
+                        println!(
+                            "   ℹ️  There is no mina-logproc docker image to promote. skipping"
+                        );
                     }
                 }
-                
+
                 Artifact::MinaArchive => {
                     for network in &networks {
                         if !args.only_dockers {
@@ -109,9 +115,10 @@ pub async fn execute(args: PromoteArgs) -> ManagerResult<()> {
                                 &args.debian_repo,
                                 args.debian_sign_key.as_deref(),
                                 args.debug,
-                            ).await?;
+                            )
+                            .await?;
                         }
-                        
+
                         if !args.only_debians {
                             promote_and_verify_docker(
                                 artifact.as_str(),
@@ -123,11 +130,12 @@ pub async fn execute(args: PromoteArgs) -> ManagerResult<()> {
                                 args.verify,
                                 args.dry_run,
                                 args.debug,
-                            ).await?;
+                            )
+                            .await?;
                         }
                     }
                 }
-                
+
                 Artifact::MinaRosetta | Artifact::MinaDaemon => {
                     for network in &networks {
                         if !args.only_dockers {
@@ -144,9 +152,10 @@ pub async fn execute(args: PromoteArgs) -> ManagerResult<()> {
                                 &args.debian_repo,
                                 args.debian_sign_key.as_deref(),
                                 args.debug,
-                            ).await?;
+                            )
+                            .await?;
                         }
-                        
+
                         if !args.only_debians {
                             promote_and_verify_docker(
                                 artifact.as_str(),
@@ -158,14 +167,15 @@ pub async fn execute(args: PromoteArgs) -> ManagerResult<()> {
                                 args.verify,
                                 args.dry_run,
                                 args.debug,
-                            ).await?;
+                            )
+                            .await?;
                         }
                     }
                 }
             }
         }
     }
-    
+
     println!("{}", " ✅  Promoting done.".green());
     Ok(())
 }
@@ -184,20 +194,27 @@ async fn promote_debian(
     debian_sign_key: Option<&str>,
     _debug: bool,
 ) -> ManagerResult<()> {
-    println!(" 🍥 Promoting {} debian from {} to {}, from {} to {}", 
-             artifact, source_channel, target_channel, source_version, target_version);
-    println!("    📦 Target debian version: {}", 
-             calculate_debian_version(artifact, target_version, codename, network));
-    
+    println!(
+        " 🍥 Promoting {} debian from {} to {}, from {} to {}",
+        artifact, source_channel, target_channel, source_version, target_version
+    );
+    println!(
+        "    📦 Target debian version: {}",
+        calculate_debian_version(artifact, target_version, codename, network)
+    );
+
     let artifact_full_name = get_artifact_with_suffix(artifact, network);
-    
+
     if !dry_run {
-        println!("    🗃️  Promoting {} debian from {}/{} to {}/{}", 
-                 artifact, codename, source_version, codename, target_version);
-        
+        println!(
+            "    🗃️  Promoting {} debian from {}/{} to {}/{}",
+            artifact, codename, source_version, codename, target_version
+        );
+
         // Use Rust reversion instead of shell script
-        let deb_path = std::path::Path::new(debian_repo).join(&format!("{}.deb", artifact_full_name));
-        
+        let deb_path =
+            std::path::Path::new(debian_repo).join(&format!("{}.deb", artifact_full_name));
+
         reversion::reversion_debian_package(
             &deb_path,
             &artifact_full_name,
@@ -206,12 +223,15 @@ async fn promote_debian(
             source_channel,
             target_channel,
             Some(&artifact_full_name),
-        ).await?;
-        
+        )
+        .await?;
+
         if verify {
-            println!("     📋 Verifying: {} debian to {} channel with {} version", 
-                     artifact, target_channel, target_version);
-            
+            println!(
+                "     📋 Verifying: {} debian to {} channel with {} version",
+                artifact, target_channel, target_version
+            );
+
             verify_debian_package(
                 &artifact_full_name,
                 target_version,
@@ -219,10 +239,11 @@ async fn promote_debian(
                 codename,
                 target_channel,
                 debian_sign_key.is_some(),
-            ).await?;
+            )
+            .await?;
         }
     }
-    
+
     Ok(())
 }
 
@@ -240,13 +261,23 @@ async fn promote_and_verify_docker(
     let network_suffix = get_suffix(artifact, Some(network));
     let artifact_full_source_version = format!("{}-{}{}", source_version, codename, network_suffix);
     let artifact_full_target_version = format!("{}-{}{}", target_version, codename, network_suffix);
-    
-    println!(" 🐋 Publishing {} docker for '{}' network and '{}' codename with '{}' version", 
-             artifact, network, codename, target_version);
-    println!("    📦 Target version: {}", 
-             calculate_docker_tag(publish_to_docker_io, artifact, target_version, codename, Some(network)));
+
+    println!(
+        " 🐋 Publishing {} docker for '{}' network and '{}' codename with '{}' version",
+        artifact, network, codename, target_version
+    );
+    println!(
+        "    📦 Target version: {}",
+        calculate_docker_tag(
+            publish_to_docker_io,
+            artifact,
+            target_version,
+            codename,
+            Some(network)
+        )
+    );
     println!();
-    
+
     if !dry_run {
         promote_docker_image(
             artifact,
@@ -254,27 +285,28 @@ async fn promote_and_verify_docker(
             &artifact_full_target_version,
             publish_to_docker_io,
             true, // quiet mode (equivalent to -q flag)
-        ).await?;
+        )
+        .await?;
         println!();
-        
+
         if verify {
-            println!("    📋 Verifying: {} docker for '{}' network and '{}' codename with '{}' version", 
-                     artifact, network, codename, target_version);
+            println!(
+                "    📋 Verifying: {} docker for '{}' network and '{}' codename with '{}' version",
+                artifact, network, codename, target_version
+            );
             println!();
-            
-            let repo = if publish_to_docker_io { "docker.io/minaprotocol" } else { "gcr.io/o1labs-192920" };
-            
-            verify_docker_image(
-                artifact,
-                target_version,
-                repo,
-                codename,
-                &network_suffix,
-            ).await?;
-            
+
+            let repo = if publish_to_docker_io {
+                "docker.io/minaprotocol"
+            } else {
+                "gcr.io/o1labs-192920"
+            };
+
+            verify_docker_image(artifact, target_version, repo, codename, &network_suffix).await?;
+
             println!();
         }
     }
-    
+
     Ok(())
 }

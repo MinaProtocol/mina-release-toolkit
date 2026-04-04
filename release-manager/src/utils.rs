@@ -4,17 +4,19 @@ use std::path::PathBuf;
 use tokio::process::Command;
 
 pub async fn check_app(app: &str) -> ManagerResult<()> {
-    let output = Command::new("which")
-        .arg(app)
-        .output()
-        .await?;
-        
+    let output = Command::new("which").arg(app).output().await?;
+
     if !output.status.success() {
-        eprintln!("{} {} !! {} program not found. Please install program to proceed. {}", 
-                 "❌".red(), "".red(), app, "".clear());
+        eprintln!(
+            "{} {} !! {} program not found. Please install program to proceed. {}",
+            "❌".red(),
+            "".red(),
+            app,
+            "".clear()
+        );
         return Err(ManagerError::CommandFailed(format!("{} not found", app)));
     }
-    
+
     Ok(())
 }
 
@@ -27,33 +29,34 @@ pub fn get_debian_cache_folder() -> PathBuf {
     }
 }
 
-
 pub async fn run_command_with_prefix(prefix: &str, mut cmd: Command) -> ManagerResult<String> {
     let output = cmd.output().await?;
-    
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(ManagerError::CommandFailed(stderr.to_string()));
     }
-    
+
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     // Add prefix to each line
     let prefixed_output = stdout
         .lines()
         .map(|line| format!("{}{}", prefix, line))
         .collect::<Vec<_>>()
         .join("\n");
-    
+
     println!("{}", prefixed_output);
-    
+
     Ok(stdout.to_string())
 }
 
 pub async fn run_command_with_debug(mut cmd: Command, debug: bool) -> ManagerResult<String> {
     if debug {
         let program = cmd.as_std().get_program().to_string_lossy();
-        let args: Vec<String> = cmd.as_std().get_args()
+        let args: Vec<String> = cmd
+            .as_std()
+            .get_args()
             .map(|arg| arg.to_string_lossy().to_string())
             .collect();
         let command_line = if args.is_empty() {
@@ -63,14 +66,14 @@ pub async fn run_command_with_debug(mut cmd: Command, debug: bool) -> ManagerRes
         };
         println!("{} 🔧 Executing: {}", "".clear(), command_line.cyan());
     }
-    
+
     let output = cmd.output().await?;
-    
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(ManagerError::CommandFailed(stderr.to_string()));
     }
-    
+
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
@@ -118,16 +121,10 @@ mod tests {
     #[test]
     fn test_validate_required_args() {
         let valid_arg = "value".to_string();
-        let args = vec![
-            ("arg1", Some(&valid_arg)),
-            ("arg2", Some(&valid_arg)),
-        ];
+        let args = vec![("arg1", Some(&valid_arg)), ("arg2", Some(&valid_arg))];
         assert!(validate_required_args(&args).is_ok());
 
-        let args_with_missing = vec![
-            ("arg1", Some(&valid_arg)),
-            ("arg2", None),
-        ];
+        let args_with_missing = vec![("arg1", Some(&valid_arg)), ("arg2", None)];
         assert!(validate_required_args(&args_with_missing).is_err());
     }
 }

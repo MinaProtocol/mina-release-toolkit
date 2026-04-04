@@ -1,4 +1,4 @@
-use crate::errors::{ManagerResult, ManagerError};
+use crate::errors::{ManagerError, ManagerResult};
 use tokio::process::Command as AsyncCommand;
 
 /// Configuration for Debian package verification
@@ -62,7 +62,7 @@ impl DebianVerifier {
 
         // Determine the Docker image to use for testing
         let docker_image = self.get_test_docker_image();
-        
+
         // Create a Docker container for testing
         self.run_verification_in_docker(&docker_image).await?;
 
@@ -72,31 +72,36 @@ impl DebianVerifier {
 
     /// Run verification inside a Docker container
     async fn run_verification_in_docker(&self, docker_image: &str) -> ManagerResult<()> {
-        println!("    🐳 Starting verification in Docker container: {}", docker_image);
+        println!(
+            "    🐳 Starting verification in Docker container: {}",
+            docker_image
+        );
 
         // Build the verification script
         let verification_script = self.build_verification_script();
-        
+
         println!("    📜 Verification script:\n{}", verification_script);
 
         // Run the script in Docker
         let mut cmd = AsyncCommand::new("docker");
         cmd.arg("run")
-           .arg("--rm")
-           .arg("-i")
-           .arg(docker_image)
-           .arg("bash")
-           .arg("-c")
-           .arg(&verification_script);
+            .arg("--rm")
+            .arg("-i")
+            .arg(docker_image)
+            .arg("bash")
+            .arg("-c")
+            .arg(&verification_script);
 
-        let output = cmd.output().await
-            .map_err(|e| ManagerError::CommandFailed(format!("Failed to run Docker verification: {}", e)))?;
+        let output = cmd.output().await.map_err(|e| {
+            ManagerError::CommandFailed(format!("Failed to run Docker verification: {}", e))
+        })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
             return Err(ManagerError::CommandFailed(format!(
-                "Docker verification failed. Stdout: {}, Stderr: {}", stdout, stderr
+                "Docker verification failed. Stdout: {}, Stderr: {}",
+                stdout, stderr
             )));
         }
 
@@ -111,10 +116,10 @@ impl DebianVerifier {
     /// Build the verification script to run inside Docker
     fn build_verification_script(&self) -> String {
         let mut script = Vec::new();
-        
+
         // Update package lists
         script.push("apt-get update".to_string());
-        
+
         // Add repository if signed
         if self.config.signed {
             script.push("apt-get install -y curl gnupg2".to_string());
@@ -123,26 +128,26 @@ impl DebianVerifier {
                 self.config.repo
             ));
         }
-        
+
         // Add repository
         script.push(format!(
             "echo 'deb [trusted=yes] https://{} {} {}' | tee /etc/apt/sources.list.d/mina.list",
             self.config.repo, self.config.codename, self.config.channel
         ));
-        
+
         // Update package lists again
         script.push("apt-get update".to_string());
-        
+
         // Install the package
         script.push(format!(
             "apt-get install -y {}={}",
             self.config.package, self.config.version
         ));
-        
+
         // Run package-specific tests
         let test_commands = self.get_test_commands();
         script.extend(test_commands);
-        
+
         script.join(" && ")
     }
 
@@ -153,18 +158,15 @@ impl DebianVerifier {
                 "mina-archive --version".to_string(),
                 "mina-archive --help".to_string(),
             ],
-            "mina-logproc" => vec![
-                "echo 'Skipped execution for mina-logproc'".to_string(),
-            ],
+            "mina-logproc" => vec!["echo 'Skipped execution for mina-logproc'".to_string()],
             pkg if pkg.starts_with("mina-rosetta") => vec![
                 "mina --version".to_string(),
                 "mina-archive --version".to_string(),
                 "mina-rosetta --help".to_string(),
             ],
-            pkg if pkg.starts_with("mina-") => vec![
-                "mina --version".to_string(),
-                "mina --help".to_string(),
-            ],
+            pkg if pkg.starts_with("mina-") => {
+                vec!["mina --version".to_string(), "mina --help".to_string()]
+            }
             _ => vec![
                 format!("{} --version", self.config.package),
                 format!("{} --help", self.config.package),
@@ -179,25 +181,36 @@ impl DebianVerifier {
             "focal" => "ubuntu:20.04",
             "jammy" => "ubuntu:22.04",
             _ => "debian:bullseye", // Default fallback
-        }.to_string()
+        }
+        .to_string()
     }
 
     /// Validate configuration parameters
     fn validate_config(&self) -> ManagerResult<()> {
         if self.config.package.is_empty() {
-            return Err(ManagerError::ValidationError("Package cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Package cannot be empty".to_string(),
+            ));
         }
         if self.config.version.is_empty() {
-            return Err(ManagerError::ValidationError("Version cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Version cannot be empty".to_string(),
+            ));
         }
         if self.config.repo.is_empty() {
-            return Err(ManagerError::ValidationError("Repository cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Repository cannot be empty".to_string(),
+            ));
         }
         if self.config.codename.is_empty() {
-            return Err(ManagerError::ValidationError("Codename cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Codename cannot be empty".to_string(),
+            ));
         }
         if self.config.channel.is_empty() {
-            return Err(ManagerError::ValidationError("Channel cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Channel cannot be empty".to_string(),
+            ));
         }
         Ok(())
     }
@@ -243,13 +256,15 @@ impl DockerVerifier {
         let mut cmd = AsyncCommand::new("docker");
         cmd.arg("pull").arg(image);
 
-        let output = cmd.output().await
-            .map_err(|e| ManagerError::CommandFailed(format!("Failed to pull Docker image: {}", e)))?;
+        let output = cmd.output().await.map_err(|e| {
+            ManagerError::CommandFailed(format!("Failed to pull Docker image: {}", e))
+        })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(ManagerError::CommandFailed(format!(
-                "Docker pull failed for {}: {}", image, stderr
+                "Docker pull failed for {}: {}",
+                image, stderr
             )));
         }
 
@@ -264,22 +279,27 @@ impl DockerVerifier {
         for app in &apps {
             for command in &commands {
                 println!("    🧪 Testing {} {} in {}", app, command, image);
-                
+
                 let mut cmd = AsyncCommand::new("docker");
                 cmd.arg("run")
-                   .arg("--entrypoint")
-                   .arg(app)
-                   .arg("--rm")
-                   .arg(image)
-                   .arg(command);
+                    .arg("--entrypoint")
+                    .arg(app)
+                    .arg("--rm")
+                    .arg(image)
+                    .arg(command);
 
-                let output = cmd.output().await
-                    .map_err(|e| ManagerError::CommandFailed(format!("Failed to test {} {}: {}", app, command, e)))?;
+                let output = cmd.output().await.map_err(|e| {
+                    ManagerError::CommandFailed(format!(
+                        "Failed to test {} {}: {}",
+                        app, command, e
+                    ))
+                })?;
 
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     return Err(ManagerError::CommandFailed(format!(
-                        "Command {} {} failed in {}: {}", app, command, image, stderr
+                        "Command {} {} failed in {}: {}",
+                        app, command, image, stderr
                     )));
                 }
             }
@@ -295,7 +315,7 @@ impl DockerVerifier {
             "mina-logproc" => {
                 println!("    ⏭️  Skipped execution for mina-logproc");
                 vec![]
-            },
+            }
             pkg if pkg.starts_with("mina-rosetta") => vec![
                 "mina".to_string(),
                 "mina-archive".to_string(),
@@ -314,16 +334,24 @@ impl DockerVerifier {
     /// Validate configuration parameters
     fn validate_config(&self) -> ManagerResult<()> {
         if self.config.package.is_empty() {
-            return Err(ManagerError::ValidationError("Package cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Package cannot be empty".to_string(),
+            ));
         }
         if self.config.version.is_empty() {
-            return Err(ManagerError::ValidationError("Version cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Version cannot be empty".to_string(),
+            ));
         }
         if self.config.repo.is_empty() {
-            return Err(ManagerError::ValidationError("Repository cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Repository cannot be empty".to_string(),
+            ));
         }
         if self.config.codename.is_empty() {
-            return Err(ManagerError::ValidationError("Codename cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Codename cannot be empty".to_string(),
+            ));
         }
         Ok(())
     }
@@ -417,11 +445,14 @@ mod tests {
 
         let verifier = DebianVerifier::new(config);
         let commands = verifier.get_test_commands();
-        
-        assert_eq!(commands, vec![
-            "mina-archive --version".to_string(),
-            "mina-archive --help".to_string(),
-        ]);
+
+        assert_eq!(
+            commands,
+            vec![
+                "mina-archive --version".to_string(),
+                "mina-archive --help".to_string(),
+            ]
+        );
     }
 
     #[test]
@@ -436,11 +467,14 @@ mod tests {
 
         let verifier = DockerVerifier::new(config);
         let apps = verifier.get_applications();
-        
-        assert_eq!(apps, vec![
-            "mina".to_string(),
-            "mina-archive".to_string(),
-            "mina-rosetta".to_string(),
-        ]);
+
+        assert_eq!(
+            apps,
+            vec![
+                "mina".to_string(),
+                "mina-archive".to_string(),
+                "mina-rosetta".to_string(),
+            ]
+        );
     }
 }
