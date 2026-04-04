@@ -1,7 +1,10 @@
+use crate::artifacts::{
+    calculate_docker_tag, combine_docker_suffixes, get_artifact_with_suffix, get_repo,
+    parse_artifact_list, parse_string_list, Artifact,
+};
 use crate::cli::VerifyArgs;
-use crate::artifacts::{parse_artifact_list, parse_string_list, get_artifact_with_suffix, calculate_docker_tag, combine_docker_suffixes, get_repo, Artifact};
-use crate::utils::print_operation_info;
 use crate::errors::ManagerResult;
+use crate::utils::print_operation_info;
 use crate::verification::{verify_debian_package, verify_docker_image};
 use colored::*;
 
@@ -10,14 +13,14 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
     let artifacts = parse_artifact_list(&args.artifacts)?;
     let networks = parse_string_list(&args.networks);
     let codenames = parse_string_list(&args.codenames);
-    
+
     // Print operation info
     let docker_io_str = args.docker_io.to_string();
     let signed_debian_repo_str = args.signed_debian_repo.to_string();
     let only_debians_str = args.only_debians.to_string();
     let only_dockers_str = args.only_dockers.to_string();
     let docker_suffix_str = args.docker_suffix.as_deref().unwrap_or("");
-    
+
     let params = vec![
         ("Verifying artifacts", args.artifacts.as_str()),
         ("Networks", args.networks.as_str()),
@@ -31,11 +34,11 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
         ("Only dockers", only_dockers_str.as_str()),
         ("Docker suffix", docker_suffix_str),
     ];
-    
+
     print_operation_info("Verifying mina artifacts", &params);
-    
+
     let repo = get_repo(args.docker_io);
-    
+
     // Process each artifact
     for artifact in &artifacts {
         for codename in &codenames {
@@ -44,7 +47,7 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                     if !args.only_dockers {
                         println!("     📋  Verifying: {} debian on {} channel with {} version for {} codename", 
                                  artifact.as_str(), args.channel, args.version, codename);
-                        
+
                         verify_debian(
                             artifact.as_str(),
                             &args.version,
@@ -53,23 +56,26 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                             &args.channel,
                             args.signed_debian_repo,
                             args.debug,
-                        ).await?;
+                        )
+                        .await?;
                     }
-                    
+
                     if !args.only_debians {
                         println!("    ℹ️  There is no mina-logproc docker image. skipping");
                     }
                 }
-                
+
                 Artifact::MinaArchive => {
                     for network in &networks {
-                        let artifact_full_name = get_artifact_with_suffix(artifact.as_str(), Some(network));
-                        let docker_suffix_combined = combine_docker_suffixes(network, args.docker_suffix.as_deref());
-                        
+                        let artifact_full_name =
+                            get_artifact_with_suffix(artifact.as_str(), Some(network));
+                        let docker_suffix_combined =
+                            combine_docker_suffixes(network, args.docker_suffix.as_deref());
+
                         if !args.only_dockers {
                             println!("     📋  Verifying: {} debian on {} channel with {} version for {} codename", 
                                      artifact.as_str(), args.channel, args.version, codename);
-                            
+
                             verify_debian(
                                 &artifact_full_name,
                                 &args.version,
@@ -78,15 +84,24 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                                 &args.channel,
                                 args.signed_debian_repo,
                                 args.debug,
-                            ).await?;
+                            )
+                            .await?;
                             println!();
                         }
-                        
+
                         if !args.only_debians {
-                            println!("      📋  Verifying: {} docker on {}", 
-                                     artifact.as_str(), 
-                                     calculate_docker_tag(args.docker_io, artifact.as_str(), &args.version, codename, Some(network)));
-                            
+                            println!(
+                                "      📋  Verifying: {} docker on {}",
+                                artifact.as_str(),
+                                calculate_docker_tag(
+                                    args.docker_io,
+                                    artifact.as_str(),
+                                    &args.version,
+                                    codename,
+                                    Some(network)
+                                )
+                            );
+
                             verify_docker(
                                 artifact.as_str(),
                                 &args.version,
@@ -94,22 +109,25 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                                 &docker_suffix_combined,
                                 repo,
                                 args.debug,
-                            ).await?;
+                            )
+                            .await?;
                             println!();
                         }
                     }
                 }
-                
+
                 Artifact::MinaRosetta => {
                     for network in &networks {
-                        let artifact_full_name = get_artifact_with_suffix(artifact.as_str(), Some(network));
-                        let docker_suffix_combined = combine_docker_suffixes(network, args.docker_suffix.as_deref());
-                        
+                        let artifact_full_name =
+                            get_artifact_with_suffix(artifact.as_str(), Some(network));
+                        let docker_suffix_combined =
+                            combine_docker_suffixes(network, args.docker_suffix.as_deref());
+
                         if !args.only_dockers {
                             println!("     📋  Verifying: {} debian on {} channel with {} version for {} codename", 
                                      artifact_full_name, args.channel, args.version, codename);
                             println!();
-                            
+
                             verify_debian(
                                 &artifact_full_name,
                                 &args.version,
@@ -118,16 +136,25 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                                 &args.channel,
                                 args.signed_debian_repo,
                                 args.debug,
-                            ).await?;
+                            )
+                            .await?;
                             println!();
                         }
-                        
+
                         if !args.only_debians {
-                            println!("      📋  Verifying: {} docker on {}", 
-                                     artifact.as_str(),
-                                     calculate_docker_tag(args.docker_io, &artifact_full_name, &args.version, codename, None));
+                            println!(
+                                "      📋  Verifying: {} docker on {}",
+                                artifact.as_str(),
+                                calculate_docker_tag(
+                                    args.docker_io,
+                                    &artifact_full_name,
+                                    &args.version,
+                                    codename,
+                                    None
+                                )
+                            );
                             println!();
-                            
+
                             verify_docker(
                                 artifact.as_str(),
                                 &args.version,
@@ -135,22 +162,25 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                                 &docker_suffix_combined,
                                 repo,
                                 args.debug,
-                            ).await?;
+                            )
+                            .await?;
                             println!();
                         }
                     }
                 }
-                
+
                 Artifact::MinaDaemon => {
                     for network in &networks {
-                        let artifact_full_name = get_artifact_with_suffix(artifact.as_str(), Some(network));
-                        let docker_suffix_combined = combine_docker_suffixes(network, args.docker_suffix.as_deref());
-                        
+                        let artifact_full_name =
+                            get_artifact_with_suffix(artifact.as_str(), Some(network));
+                        let docker_suffix_combined =
+                            combine_docker_suffixes(network, args.docker_suffix.as_deref());
+
                         if !args.only_dockers {
                             println!("     📋  Verifying: {} debian on {} channel with {} version for {} codename", 
                                      artifact_full_name, args.channel, args.version, codename);
                             println!();
-                            
+
                             verify_debian(
                                 &artifact_full_name,
                                 &args.version,
@@ -159,16 +189,25 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                                 &args.channel,
                                 args.signed_debian_repo,
                                 args.debug,
-                            ).await?;
+                            )
+                            .await?;
                             println!();
                         }
-                        
+
                         if !args.only_debians {
-                            println!("      📋  Verifying: {} docker on {}", 
-                                     artifact.as_str(),
-                                     calculate_docker_tag(args.docker_io, &artifact_full_name, &args.version, codename, None));
+                            println!(
+                                "      📋  Verifying: {} docker on {}",
+                                artifact.as_str(),
+                                calculate_docker_tag(
+                                    args.docker_io,
+                                    &artifact_full_name,
+                                    &args.version,
+                                    codename,
+                                    None
+                                )
+                            );
                             println!();
-                            
+
                             verify_docker(
                                 artifact.as_str(),
                                 &args.version,
@@ -176,7 +215,8 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                                 &docker_suffix_combined,
                                 repo,
                                 args.debug,
-                            ).await?;
+                            )
+                            .await?;
                             println!();
                         }
                     }
@@ -184,7 +224,7 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
             }
         }
     }
-    
+
     println!("{}", " ✅  Verification done.".green());
     Ok(())
 }

@@ -1,5 +1,5 @@
-use regex::Regex;
 use crate::errors::{ManagerError, ManagerResult};
+use regex::Regex;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Artifact {
@@ -19,7 +19,7 @@ impl Artifact {
             _ => Err(ManagerError::UnknownArtifact(s.to_string())),
         }
     }
-    
+
     pub fn as_str(&self) -> &'static str {
         match self {
             Artifact::MinaDaemon => "mina-daemon",
@@ -70,21 +70,33 @@ pub fn get_artifact_with_suffix(artifact: &str, network: Option<&str>) -> String
     }
 }
 
-pub fn calculate_debian_version(artifact: &str, target_version: &str, codename: &str, network: Option<&str>) -> String {
+pub fn calculate_debian_version(
+    artifact: &str,
+    target_version: &str,
+    codename: &str,
+    network: Option<&str>,
+) -> String {
     let network_suffix = get_suffix(artifact, network);
-    format!("{}:{}-{}{}", artifact, target_version, codename, network_suffix)
+    format!(
+        "{}:{}-{}{}",
+        artifact, target_version, codename, network_suffix
+    )
 }
 
 pub fn extract_version_from_deb(deb_file: &str) -> ManagerResult<String> {
-    let re = Regex::new(r".*_([^_]*)\.deb$").map_err(|e| ManagerError::ValidationError(e.to_string()))?;
-    
+    let re = Regex::new(r".*_([^_]*)\.deb$")
+        .map_err(|e| ManagerError::ValidationError(e.to_string()))?;
+
     if let Some(captures) = re.captures(deb_file) {
         if let Some(version) = captures.get(1) {
             return Ok(version.as_str().to_string());
         }
     }
-    
-    Err(ManagerError::ValidationError(format!("Could not extract version from: {}", deb_file)))
+
+    Err(ManagerError::ValidationError(format!(
+        "Could not extract version from: {}",
+        deb_file
+    )))
 }
 
 pub fn calculate_docker_tag(
@@ -100,8 +112,11 @@ pub fn calculate_docker_tag(
     } else {
         "gcr.io/o1labs-192920"
     };
-    
-    format!("{}/{}:{}-{}{}", repo, artifact, target_version, codename, network_suffix)
+
+    format!(
+        "{}/{}:{}-{}{}",
+        repo, artifact, target_version, codename, network_suffix
+    )
 }
 
 pub fn get_repo(publish_to_docker_io: bool) -> &'static str {
@@ -150,9 +165,18 @@ mod tests {
 
     #[test]
     fn test_get_artifact_with_suffix() {
-        assert_eq!(get_artifact_with_suffix("mina-daemon", Some("devnet")), "mina-devnet");
-        assert_eq!(get_artifact_with_suffix("mina-archive", Some("mainnet")), "mina-archive-mainnet");
-        assert_eq!(get_artifact_with_suffix("mina-logproc", Some("devnet")), "mina-logproc");
+        assert_eq!(
+            get_artifact_with_suffix("mina-daemon", Some("devnet")),
+            "mina-devnet"
+        );
+        assert_eq!(
+            get_artifact_with_suffix("mina-archive", Some("mainnet")),
+            "mina-archive-mainnet"
+        );
+        assert_eq!(
+            get_artifact_with_suffix("mina-logproc", Some("devnet")),
+            "mina-logproc"
+        );
     }
 
     #[test]

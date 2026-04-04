@@ -1,9 +1,9 @@
-use crate::errors::{ManagerResult, ManagerError};
+use crate::errors::{ManagerError, ManagerResult};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use tokio::process::Command as AsyncCommand;
 use tempfile::TempDir;
+use tokio::process::Command as AsyncCommand;
 
 /// Configuration for Debian package reversion
 #[derive(Debug, Clone)]
@@ -33,37 +33,49 @@ pub struct DebianReversioner {
 impl DebianReversioner {
     /// Create a new DebianReversioner with the given configuration
     pub fn new(config: ReversionConfig) -> ManagerResult<Self> {
-        let temp_dir = TempDir::new()
-            .map_err(|e| ManagerError::IoError(io::Error::new(io::ErrorKind::Other, format!("Failed to create temp directory: {}", e))))?;
-        
-        Ok(Self {
-            config,
-            temp_dir,
-        })
+        let temp_dir = TempDir::new().map_err(|e| {
+            ManagerError::IoError(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Failed to create temp directory: {}", e),
+            ))
+        })?;
+
+        Ok(Self { config, temp_dir })
     }
 
     /// Perform the complete reversion process
     pub async fn reversion(&self) -> ManagerResult<PathBuf> {
         self.validate_inputs()?;
-        
+
         println!(" 🔄 Reversioning Debian package:");
-        println!("    📦 Source: {} v{}", self.config.package_name, self.config.source_version);
-        println!("    🎯 Target: {} v{}", 
-                self.config.new_name.as_ref().unwrap_or(&self.config.package_name), 
-                self.config.new_version);
-        println!("    📂 Suite: {} → {}", self.config.suite, self.config.new_suite);
+        println!(
+            "    📦 Source: {} v{}",
+            self.config.package_name, self.config.source_version
+        );
+        println!(
+            "    🎯 Target: {} v{}",
+            self.config
+                .new_name
+                .as_ref()
+                .unwrap_or(&self.config.package_name),
+            self.config.new_version
+        );
+        println!(
+            "    📂 Suite: {} → {}",
+            self.config.suite, self.config.new_suite
+        );
 
         // Extract the original package
         let extract_dir = self.extract_package().await?;
-        
+
         // Modify package metadata
         self.modify_control_files(&extract_dir).await?;
-        
+
         // Rebuild the package with new version
         let new_deb_path = self.rebuild_package(&extract_dir).await?;
-        
+
         println!(" ✅ Reversion completed: {}", new_deb_path.display());
-        
+
         Ok(new_deb_path)
     }
 
@@ -72,20 +84,29 @@ impl DebianReversioner {
         if !self.config.deb_path.exists() {
             return Err(ManagerError::IoError(io::Error::new(
                 io::ErrorKind::NotFound,
-                format!("Source .deb file does not exist: {}", self.config.deb_path.display())
+                format!(
+                    "Source .deb file does not exist: {}",
+                    self.config.deb_path.display()
+                ),
             )));
         }
 
         if self.config.source_version.is_empty() {
-            return Err(ManagerError::ValidationError("Source version cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Source version cannot be empty".to_string(),
+            ));
         }
 
         if self.config.new_version.is_empty() {
-            return Err(ManagerError::ValidationError("New version cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "New version cannot be empty".to_string(),
+            ));
         }
 
         if self.config.package_name.is_empty() {
-            return Err(ManagerError::ValidationError("Package name cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Package name cannot be empty".to_string(),
+            ));
         }
 
         Ok(())
@@ -96,20 +117,23 @@ impl DebianReversioner {
         let extract_dir = self.temp_dir.path().join("extracted");
         fs::create_dir_all(&extract_dir)?;
 
-        println!("    📤 Extracting package: {}", self.config.deb_path.display());
-        
-        let mut cmd = AsyncCommand::new("dpkg-deb");
-        cmd.arg("-R")
-           .arg(&self.config.deb_path)
-           .arg(&extract_dir);
+        println!(
+            "    📤 Extracting package: {}",
+            self.config.deb_path.display()
+        );
 
-        let output = cmd.output().await
-            .map_err(|e| ManagerError::CommandFailed(format!("Failed to execute dpkg-deb: {}", e)))?;
+        let mut cmd = AsyncCommand::new("dpkg-deb");
+        cmd.arg("-R").arg(&self.config.deb_path).arg(&extract_dir);
+
+        let output = cmd.output().await.map_err(|e| {
+            ManagerError::CommandFailed(format!("Failed to execute dpkg-deb: {}", e))
+        })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(ManagerError::CommandFailed(format!(
-                "dpkg-deb extraction failed: {}", stderr
+                "dpkg-deb extraction failed: {}",
+                stderr
             )));
         }
 
@@ -119,16 +143,16 @@ impl DebianReversioner {
     /// Modify control files with new version and metadata
     async fn modify_control_files(&self, extract_dir: &Path) -> ManagerResult<()> {
         let control_file = extract_dir.join("DEBIAN").join("control");
-        
+
         if !control_file.exists() {
             return Err(ManagerError::IoError(io::Error::new(
                 io::ErrorKind::NotFound,
-                format!("Control file not found: {}", control_file.display())
+                format!("Control file not found: {}", control_file.display()),
             )));
         }
 
         println!("    ✏️  Modifying control file: {}", control_file.display());
-        
+
         // Read the control file
         let control_content = fs::read_to_string(&control_file)?;
 
@@ -165,9 +189,10 @@ impl DebianReversioner {
             if let Some(version_line_end) = result[version_line_start..].find('\n') {
                 let version_line_end = version_line_start + version_line_end;
                 let version_line = &result[version_line_start..version_line_end];
-                
+
                 if version_line.contains(&self.config.source_version) {
-                    let new_version_line = version_line.replace(&self.config.source_version, &self.config.new_version);
+                    let new_version_line =
+                        version_line.replace(&self.config.source_version, &self.config.new_version);
                     result.replace_range(version_line_start..version_line_end, &new_version_line);
                     modified = true;
                 }
@@ -195,7 +220,10 @@ impl DebianReversioner {
         }
 
         // Also ensure there are no trailing spaces that might cause issues
-        let lines: Vec<String> = result.lines().map(|line| line.trim_end().to_string()).collect();
+        let lines: Vec<String> = result
+            .lines()
+            .map(|line| line.trim_end().to_string())
+            .collect();
         result = lines.join("\n");
         if !result.ends_with('\n') {
             result.push('\n');
@@ -207,8 +235,18 @@ impl DebianReversioner {
     /// Update changelog file if it exists
     async fn update_changelog(&self, extract_dir: &Path) -> ManagerResult<()> {
         let changelog_paths = [
-            extract_dir.join("usr").join("share").join("doc").join(&self.config.package_name).join("changelog.Debian.gz"),
-            extract_dir.join("usr").join("share").join("doc").join(&self.config.package_name).join("changelog.gz"),
+            extract_dir
+                .join("usr")
+                .join("share")
+                .join("doc")
+                .join(&self.config.package_name)
+                .join("changelog.Debian.gz"),
+            extract_dir
+                .join("usr")
+                .join("share")
+                .join("doc")
+                .join(&self.config.package_name)
+                .join("changelog.gz"),
         ];
 
         for changelog_path in &changelog_paths {
@@ -226,9 +264,17 @@ impl DebianReversioner {
 
     /// Create a new changelog entry
     async fn create_changelog_entry(&self, extract_dir: &Path) -> ManagerResult<()> {
-        let package_name = self.config.new_name.as_ref().unwrap_or(&self.config.package_name);
-        let doc_dir = extract_dir.join("usr").join("share").join("doc").join(package_name);
-        
+        let package_name = self
+            .config
+            .new_name
+            .as_ref()
+            .unwrap_or(&self.config.package_name);
+        let doc_dir = extract_dir
+            .join("usr")
+            .join("share")
+            .join("doc")
+            .join(package_name);
+
         if let Err(e) = fs::create_dir_all(&doc_dir) {
             println!("    ⚠️  Warning: Could not create doc directory: {}", e);
             return Ok(());
@@ -252,7 +298,7 @@ impl DebianReversioner {
         // Compress the changelog
         let mut cmd = AsyncCommand::new("gzip");
         cmd.arg("-f").arg(&changelog_file);
-        
+
         if let Err(e) = cmd.output().await {
             println!("    ⚠️  Warning: Could not compress changelog: {}", e);
         }
@@ -262,9 +308,16 @@ impl DebianReversioner {
 
     /// Rebuild the package with new metadata
     async fn rebuild_package(&self, extract_dir: &Path) -> ManagerResult<PathBuf> {
-        let new_package_name = self.config.new_name.as_ref().unwrap_or(&self.config.package_name);
+        let new_package_name = self
+            .config
+            .new_name
+            .as_ref()
+            .unwrap_or(&self.config.package_name);
         let new_deb_filename = format!("{}_{}.deb", new_package_name, self.config.new_version);
-        let new_deb_path = self.config.deb_path.parent()
+        let new_deb_path = self
+            .config
+            .deb_path
+            .parent()
             .unwrap_or_else(|| Path::new("."))
             .join(&new_deb_filename);
 
@@ -276,17 +329,17 @@ impl DebianReversioner {
         println!("    📦 Building new package: {}", new_deb_path.display());
 
         let mut cmd = AsyncCommand::new("dpkg-deb");
-        cmd.arg("--build")
-           .arg(extract_dir)
-           .arg(&new_deb_path);
+        cmd.arg("--build").arg(extract_dir).arg(&new_deb_path);
 
-        let output = cmd.output().await
-            .map_err(|e| ManagerError::CommandFailed(format!("Failed to execute dpkg-deb build: {}", e)))?;
+        let output = cmd.output().await.map_err(|e| {
+            ManagerError::CommandFailed(format!("Failed to execute dpkg-deb build: {}", e))
+        })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(ManagerError::CommandFailed(format!(
-                "dpkg-deb build failed: {}", stderr
+                "dpkg-deb build failed: {}",
+                stderr
             )));
         }
 
@@ -294,7 +347,10 @@ impl DebianReversioner {
         if !new_deb_path.exists() {
             return Err(ManagerError::IoError(io::Error::new(
                 io::ErrorKind::NotFound,
-                format!("New .deb package was not created: {}", new_deb_path.display())
+                format!(
+                    "New .deb package was not created: {}",
+                    new_deb_path.display()
+                ),
             )));
         }
 
@@ -362,7 +418,7 @@ mod tests {
         };
 
         let reversioner = DebianReversioner::new(config).unwrap();
-        
+
         let control_content = r#"Package: test-package
 Version: 1.0.0-1
 Architecture: amd64
@@ -373,11 +429,17 @@ Description: Test package
 "#;
 
         let updated_content = reversioner.update_control_content(control_content).unwrap();
-        
+
         assert!(updated_content.contains("Package: new-package"));
         assert!(updated_content.contains("Version: 1.0.1-1"));
-        assert!(updated_content.ends_with("\n"), "Control file should end with newline");
-        assert!(updated_content.contains("Multi-line description"), "Multi-line fields should be preserved");
+        assert!(
+            updated_content.ends_with("\n"),
+            "Control file should end with newline"
+        );
+        assert!(
+            updated_content.contains("Multi-line description"),
+            "Multi-line fields should be preserved"
+        );
     }
 
     #[test]

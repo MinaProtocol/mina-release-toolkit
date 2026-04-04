@@ -1,9 +1,8 @@
-use crate::errors::{ManagerResult, ManagerError};
-use std::path::Path;
-use tokio::process::Command as AsyncCommand;
+use crate::errors::{ManagerError, ManagerResult};
 use chrono::NaiveDateTime;
 use chrono::Utc;
-
+use std::path::Path;
+use tokio::process::Command as AsyncCommand;
 
 /// Configuration for Debian package publishing
 #[derive(Debug, Clone)]
@@ -48,8 +47,9 @@ impl DebianPublisher {
         let mut ls_cmd = AsyncCommand::new("aws");
         ls_cmd.args(&["s3", "ls", &lockfile_path]);
 
-        let ls_output = ls_cmd.output().await
-            .map_err(|e| ManagerError::CommandFailed(format!("Failed to execute aws s3 ls: {}", e)))?;
+        let ls_output = ls_cmd.output().await.map_err(|e| {
+            ManagerError::CommandFailed(format!("Failed to execute aws s3 ls: {}", e))
+        })?;
 
         if !ls_output.status.success() {
             println!("    ℹ️  No lockfile found");
@@ -68,28 +68,38 @@ impl DebianPublisher {
             println!("    ⚠️  Could not parse lockfile timestamp. Deleting anyway...");
             self.delete_lockfile(&lockfile_path).await?;
             return Err(ManagerError::CommandFailed(
-                "Could not get lockfile timestamp from S3 bucket. Check AWS credentials.".to_string()
+                "Could not get lockfile timestamp from S3 bucket. Check AWS credentials."
+                    .to_string(),
             ));
         }
 
         let date_str = format!("{} {}", parts[0], parts[1]);
-        
+
         // Parse the timestamp using chrono
         let lockfile_time = NaiveDateTime::parse_from_str(&date_str, "%Y-%m-%d %H:%M:%S")
-            .map_err(|e| ManagerError::ValidationError(format!("Failed to parse timestamp: {}", e)))?
+            .map_err(|e| {
+                ManagerError::ValidationError(format!("Failed to parse timestamp: {}", e))
+            })?
             .and_utc();
 
         let now = Utc::now();
         let time_diff = now.signed_duration_since(lockfile_time).num_seconds();
 
         if time_diff > 300 {
-            println!("    🕒 Lockfile is older than 5 minutes ({} seconds). Deleting...", time_diff);
+            println!(
+                "    🕒 Lockfile is older than 5 minutes ({} seconds). Deleting...",
+                time_diff
+            );
             self.delete_lockfile(&lockfile_path).await?;
             println!("    ✅ Lockfile deleted");
         } else {
-            println!("    ⏰ Lockfile is younger than 5 minutes ({} seconds). Refusing to delete.", time_diff);
+            println!(
+                "    ⏰ Lockfile is younger than 5 minutes ({} seconds). Refusing to delete.",
+                time_diff
+            );
             return Err(ManagerError::ValidationError(
-                "Lockfile is too recent. There may be an active deb-s3 instance using it.".to_string()
+                "Lockfile is too recent. There may be an active deb-s3 instance using it."
+                    .to_string(),
             ));
         }
 
@@ -101,13 +111,15 @@ impl DebianPublisher {
         let mut rm_cmd = AsyncCommand::new("aws");
         rm_cmd.args(&["s3", "rm", lockfile_path]);
 
-        let rm_output = rm_cmd.output().await
-            .map_err(|e| ManagerError::CommandFailed(format!("Failed to execute aws s3 rm: {}", e)))?;
+        let rm_output = rm_cmd.output().await.map_err(|e| {
+            ManagerError::CommandFailed(format!("Failed to execute aws s3 rm: {}", e))
+        })?;
 
         if !rm_output.status.success() {
             let stderr = String::from_utf8_lossy(&rm_output.stderr);
             return Err(ManagerError::CommandFailed(format!(
-                "Failed to delete lockfile: {}", stderr
+                "Failed to delete lockfile: {}",
+                stderr
             )));
         }
 
@@ -117,7 +129,7 @@ impl DebianPublisher {
     /// Publish the Debian package to S3 repository
     pub async fn publish(&self) -> ManagerResult<()> {
         self.validate_config()?;
-        
+
         println!(" 📦 Publishing Debian package to S3 repository:");
         println!("    📁 Package: {}", self.config.package_path);
         println!("    🏷️  Version: {}", self.config.version);
@@ -128,27 +140,28 @@ impl DebianPublisher {
         // Check if package file exists
         if !Path::new(&self.config.package_path).exists() {
             return Err(ManagerError::ValidationError(format!(
-                "Package file not found: {}", self.config.package_path
+                "Package file not found: {}",
+                self.config.package_path
             )));
         }
 
         // Build deb-s3 upload command
         let mut cmd = AsyncCommand::new("deb-s3");
         cmd.arg("upload")
-           .arg("--s3-region=us-west-2")
-           .arg("--bucket")
-           .arg(&self.config.bucket)
-           .arg("--codename")
-           .arg(&self.config.codename)
-           .arg("--component")
-           .arg(&self.config.release)
-           .arg("--suite")
-           .arg(&self.config.release)
-           .arg("--preserve-versions")
-           .arg("--lock")
-           .arg("--fail-if-exists")
-           .arg("--cache-control=max-age=120")
-           .arg(&self.config.package_path);
+            .arg("--s3-region=us-west-2")
+            .arg("--bucket")
+            .arg(&self.config.bucket)
+            .arg("--codename")
+            .arg(&self.config.codename)
+            .arg("--component")
+            .arg(&self.config.release)
+            .arg("--suite")
+            .arg(&self.config.release)
+            .arg("--preserve-versions")
+            .arg("--lock")
+            .arg("--fail-if-exists")
+            .arg("--cache-control=max-age=120")
+            .arg(&self.config.package_path);
 
         // Add signing if specified
         if let Some(sign_key) = &self.config.sign_key {
@@ -160,10 +173,10 @@ impl DebianPublisher {
             println!("    📜 Command: {:?}", cmd);
         }
 
-        let output = cmd.output().await
+        let output = cmd
+            .output()
+            .await
             .map_err(|e| ManagerError::CommandFailed(format!("Failed to execute deb-s3: {}", e)))?;
-
-
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -172,7 +185,9 @@ impl DebianPublisher {
             println!("    ❌ Upload failed");
             // Check if error is due to lockfile conflict
             if stderr.contains("lockfile") || stderr.contains("locked") {
-                println!("    🔒 Lockfile conflict detected. Attempting to remove stale lockfile...");
+                println!(
+                    "    🔒 Lockfile conflict detected. Attempting to remove stale lockfile..."
+                );
                 if let Err(lockfile_err) = self.remove_lockfile().await {
                     println!("    ⚠️  Failed to remove lockfile: {}", lockfile_err);
                 } else {
@@ -181,11 +196,10 @@ impl DebianPublisher {
             }
 
             return Err(ManagerError::CommandFailed(format!(
-                "deb-s3 upload failed. Stdout: {}, Stderr: {}", stdout, stderr
+                "deb-s3 upload failed. Stdout: {}, Stderr: {}",
+                stdout, stderr
             )));
         }
-
-
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         println!("    ✅ Upload completed successfully");
@@ -206,23 +220,25 @@ impl DebianPublisher {
         // Build deb-s3 verify command
         let mut cmd = AsyncCommand::new("deb-s3");
         cmd.arg("verify")
-           .arg("--bucket")
-           .arg(&self.config.bucket)
-           .arg("--s3-region=us-west-2")
-           .arg("--codename")
-           .arg(&self.config.codename)
-           .arg("--component")
-           .arg(&self.config.release)
-           .arg("--suite")
-           .arg(&self.config.release);
+            .arg("--bucket")
+            .arg(&self.config.bucket)
+            .arg("--s3-region=us-west-2")
+            .arg("--codename")
+            .arg(&self.config.codename)
+            .arg("--component")
+            .arg(&self.config.release)
+            .arg("--suite")
+            .arg(&self.config.release);
 
-        let output = cmd.output().await
-            .map_err(|e| ManagerError::CommandFailed(format!("Failed to execute deb-s3 verify: {}", e)))?;
+        let output = cmd.output().await.map_err(|e| {
+            ManagerError::CommandFailed(format!("Failed to execute deb-s3 verify: {}", e))
+        })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(ManagerError::CommandFailed(format!(
-                "deb-s3 verify failed: {}", stderr
+                "deb-s3 verify failed: {}",
+                stderr
             )));
         }
 
@@ -233,19 +249,29 @@ impl DebianPublisher {
     /// Validate configuration parameters
     fn validate_config(&self) -> ManagerResult<()> {
         if self.config.package_path.is_empty() {
-            return Err(ManagerError::ValidationError("Package path cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Package path cannot be empty".to_string(),
+            ));
         }
         if self.config.version.is_empty() {
-            return Err(ManagerError::ValidationError("Version cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Version cannot be empty".to_string(),
+            ));
         }
         if self.config.bucket.is_empty() {
-            return Err(ManagerError::ValidationError("Bucket cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Bucket cannot be empty".to_string(),
+            ));
         }
         if self.config.codename.is_empty() {
-            return Err(ManagerError::ValidationError("Codename cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Codename cannot be empty".to_string(),
+            ));
         }
         if self.config.release.is_empty() {
-            return Err(ManagerError::ValidationError("Release cannot be empty".to_string()));
+            return Err(ManagerError::ValidationError(
+                "Release cannot be empty".to_string(),
+            ));
         }
         Ok(())
     }
@@ -259,7 +285,7 @@ pub async fn publish_debian_package(
     codename: &str,
     release: &str,
     sign_key: Option<&str>,
-    debug: bool,    
+    debug: bool,
 ) -> ManagerResult<()> {
     let config = DebianPublishConfig {
         package_path: package_path.to_string(),

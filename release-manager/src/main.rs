@@ -2,16 +2,16 @@ use clap::{Parser, Subcommand};
 use colored::*;
 use std::env;
 
-mod cli;
-mod storage;
 mod artifacts;
+mod cli;
 mod commands;
-mod utils;
+mod debian_publish;
+mod docker_promote;
 mod errors;
 mod reversion;
-mod debian_publish;
+mod storage;
+mod utils;
 mod verification;
-mod docker_promote;
 
 use cli::*;
 use errors::ManagerResult;
@@ -41,7 +41,7 @@ Supported backends: Google Cloud Storage (gs), Hetzner, local filesystem
 struct Cli {
     #[command(subcommand)]
     command: Commands,
-    
+
     #[arg(long, env = "RUST_LOG", default_value = "info")]
     log_level: String,
 }
@@ -65,14 +65,14 @@ enum Commands {
 #[tokio::main]
 async fn main() -> ManagerResult<()> {
     let cli = Cli::parse();
-    
+
     // Initialize logger
     env::set_var("RUST_LOG", &cli.log_level);
     env_logger::init();
-    
+
     // Check required applications based on command
     check_prerequisites(&cli.command).await?;
-    
+
     let result = match cli.command {
         Commands::Publish(args) => commands::publish::execute(args).await,
         Commands::Promote(args) => commands::promote::execute(args).await,
@@ -81,7 +81,7 @@ async fn main() -> ManagerResult<()> {
         Commands::Persist(args) => commands::persist::execute(args).await,
         Commands::Pull(args) => commands::pull::execute(args).await,
     };
-    
+
     match result {
         Ok(_) => {
             println!("{}", " ✅  Operation completed successfully.".green());
@@ -96,7 +96,7 @@ async fn main() -> ManagerResult<()> {
 
 async fn check_prerequisites(command: &Commands) -> ManagerResult<()> {
     use utils::check_app;
-    
+
     match command {
         Commands::Publish(args) => {
             if args.backend == "gs" {
@@ -119,6 +119,6 @@ async fn check_prerequisites(command: &Commands) -> ManagerResult<()> {
         }
         _ => {}
     }
-    
+
     Ok(())
 }
