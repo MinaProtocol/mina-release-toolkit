@@ -4,6 +4,3 @@
 [submodule "deb-s3"]
 	path = deb-s3
 	url = https://github.com/minaprotocol/deb-s3.git
-[submodule "deb-builder"]
-	path = deb-builder
-	url = https://github.com/minaprotocol/deb-builder.git
