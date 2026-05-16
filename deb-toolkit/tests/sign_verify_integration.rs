@@ -1,8 +1,9 @@
-//! End-to-end test mirroring `src/test/test_deb_builder.ml`:
+//! End-to-end pipeline test:
 //!   1. Build a .deb from the fixture build_dir
 //!   2. Import the fixture GPG secret key, confirm its id
 //!   3. `sign` the .deb with that key
-//!   4. `verify signature` using the fixture public key
+//!   4. `lookup sign-key` to confirm the embedded key id
+//!   5. `verify signature` using the fixture public key
 //!
 //! Tools required at runtime: fakeroot, dpkg-deb, debsigs, debsig-verify, gpg.
 //! Skips with a printed note if any are missing.
@@ -85,7 +86,7 @@ fn build_sign_verify_end_to_end() {
     }
 
     let tmp = tempfile::Builder::new()
-        .prefix("deb-builder-sign-")
+        .prefix("deb-toolkit-sign-")
         .tempdir()
         .unwrap();
 
@@ -104,7 +105,7 @@ fn build_sign_verify_end_to_end() {
     perms.set_mode(0o700);
     std::fs::set_permissions(&gnupg_home, perms).unwrap();
 
-    let bin = env!("CARGO_BIN_EXE_deb-builder");
+    let bin = env!("CARGO_BIN_EXE_deb-toolkit");
 
     // ---- build ----
     let status = Command::new(bin)

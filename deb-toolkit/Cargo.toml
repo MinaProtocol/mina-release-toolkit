@@ -1,18 +1,18 @@
 [package]
-name = "deb-builder"
+name = "deb-toolkit"
 version = "0.1.0"
 edition = "2021"
 authors = ["Mina Protocol Team"]
-description = "Build, sign and verify Debian packages (Rust port of deb_builder)"
+description = "Build, sign, verify, and inspect Debian packages"
 license = "Apache-2.0"
 repository = "https://github.com/MinaProtocol/mina-release-toolkit"
 
 [[bin]]
-name = "deb-builder"
+name = "deb-toolkit"
 path = "src/main.rs"
 
 [lib]
-name = "deb_builder"
+name = "deb_toolkit"
 path = "src/lib.rs"
 
 [dependencies]

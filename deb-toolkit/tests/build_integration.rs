@@ -1,4 +1,5 @@
-//! End-to-end build test mirroring `src/test/test_deb_builder.ml`.
+//! End-to-end test that builds a real .deb against the fixture build_dir
+//! and inspects it with `dpkg-deb -I`.
 //!
 //! Requires `fakeroot` and `dpkg-deb` to be available on PATH; the test is
 //! skipped (with a printed note) on systems without them.
@@ -29,7 +30,7 @@ fn build_produces_deb() {
     }
 
     let tmp = tempfile::Builder::new()
-        .prefix("deb-builder-build-")
+        .prefix("deb-toolkit-build-")
         .tempdir()
         .unwrap();
 
@@ -41,7 +42,7 @@ fn build_produces_deb() {
     let output_dir = tmp.path().join("out");
     let defaults = fixtures_dir().join("defaults.json");
 
-    let bin = env!("CARGO_BIN_EXE_deb-builder");
+    let bin = env!("CARGO_BIN_EXE_deb-toolkit");
     let status = Command::new(bin)
         .args(["build"])
         .args(["--build-dir", build_dir.to_str().unwrap()])
@@ -53,7 +54,7 @@ fn build_produces_deb() {
         .args(["--description", "example app"])
         .args(["--defaults-file", defaults.to_str().unwrap()])
         .status()
-        .expect("spawn deb-builder build");
+        .expect("spawn deb-toolkit build");
 
     assert!(status.success(), "build subcommand failed");
 

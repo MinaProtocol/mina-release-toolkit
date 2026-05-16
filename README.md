@@ -8,8 +8,8 @@ The mina-release-toolkit is designed to handle the complete lifecycle of Mina Pr
 
 ## Components
 
-### 1. **deb-builder** (Rust Application)
-A Rust utility for building, signing, and verifying Debian packages.
+### 1. **deb-toolkit** (Rust Application)
+A Rust CLI for building, signing, and verifying Debian packages.
 
 **Key Features:**
 - **Template-based package generation** (minijinja) with extensive metadata support
@@ -28,9 +28,9 @@ A Rust utility for building, signing, and verifying Debian packages.
 
 **Usage:**
 ```bash
-cd deb-builder
+cd deb-toolkit
 cargo build --release
-./target/release/deb-builder build --build-dir ./build \
+./target/release/deb-toolkit build --build-dir ./build \
     --output-dir ./out --package-name mina-daemon --version 1.0.0 \
     --suite stable --codename focal
 ```
@@ -158,7 +158,7 @@ The toolkit components work together in a coordinated release pipeline:
 
 1. **dhall-buildkite** defines CI/CD pipelines that trigger builds
 2. **buildkite-cache-manager.sh** handles artifact caching during builds  
-3. **deb-builder** creates Debian packages from build outputs
+3. **deb-toolkit** creates Debian packages from build outputs
 4. **release-manager** publishes packages to repositories and registries
 5. **deb-s3** manages APT repository manifests on S3
 6. **debian/repositories** validates published packages
@@ -166,7 +166,7 @@ The toolkit components work together in a coordinated release pipeline:
 ## Development Environment
 
 ### Prerequisites
-- **Rust** (1.70+) for release-manager, deb-builder, buildkite-cache-manager, rust-buildkite
+- **Rust** (1.70+) for release-manager, deb-toolkit, buildkite-cache-manager, rust-buildkite
 - **Ruby** (2.7+) for deb-s3
 - **Dhall** (1.40+) for dhall-buildkite
 - **Docker** for containerized builds and testing
@@ -179,13 +179,13 @@ git clone --recurse-submodules https://github.com/MinaProtocol/mina-release-tool
 cd mina-release-toolkit
 
 # Build all components
-cd deb-builder && cargo build --release
+cd deb-toolkit && cargo build --release
 cd ../release-manager && cargo build --release
 cd ../dhall-buildkite && make all_checks
 cd ../deb-s3 && bundle install
 
 # Run tests
-cd deb-builder && cargo test
+cd deb-toolkit && cargo test
 cd ../release-manager && cargo test
 cd ../dhall-buildkite && make check_examples
 ```

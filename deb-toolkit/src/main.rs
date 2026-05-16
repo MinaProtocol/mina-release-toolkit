@@ -1,9 +1,9 @@
 use anyhow::Result;
 use clap::Parser;
 
-use deb_builder::builder::{build_debian_package, evaluate_and_validate};
-use deb_builder::cli::{Cli, Command, LookupCommand, VerifyCommand};
-use deb_builder::{content_verifier, signature_verifier, signer, viewer};
+use deb_toolkit::builder::{build_debian_package, evaluate_and_validate};
+use deb_toolkit::cli::{Cli, Command, LookupCommand, VerifyCommand};
+use deb_toolkit::{content_verifier, signature_verifier, signer, viewer};
 
 fn init_logging(debug: bool) {
     let level = if debug { "debug" } else { "info" };
