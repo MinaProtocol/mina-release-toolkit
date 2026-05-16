@@ -1,0 +1,15 @@
+Package: example-app
+Version: 1.0.0
+Architecture: amd64
+Maintainer: O(1)Labs <build@o1labs.org>
+Section: base
+Priority: optional
+Homepage: https://minaprotocol.com/
+Installed-Size: 
+Source: 
+Suite: stable
+Codename: focal
+License: Apache-2.0
+Description:
+ example app
+ Built from fakehash by localhost

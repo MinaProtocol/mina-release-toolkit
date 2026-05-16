@@ -1,0 +1,33 @@
+[package]
+name = "deb-toolkit"
+version = "0.1.0"
+edition = "2021"
+authors = ["Mina Protocol Team"]
+description = "Build, sign, verify, and inspect Debian packages"
+license = "Apache-2.0"
+repository = "https://github.com/MinaProtocol/mina-release-toolkit"
+
+[[bin]]
+name = "deb-toolkit"
+path = "src/main.rs"
+
+[lib]
+name = "deb_toolkit"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+anyhow = "1.0"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+regex = "1.11"
+log = "0.4"
+env_logger = "0.10"
+minijinja = "2"
+tempfile = "3"
+
+[dev-dependencies]
+assert_cmd = "2"
+pretty_assertions = "1.4"
+tempfile = "3"

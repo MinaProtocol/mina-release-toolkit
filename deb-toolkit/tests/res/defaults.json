@@ -1,0 +1,14 @@
+{
+    "vendor" : "none"
+  , "license" : "Apache-2.0"
+  , "package_authors" : "O(1)Labs <build@o1labs.org>"
+  , "package_maintainer" : "O(1)Labs <build@o1labs.org>"
+  , "package_section" : "base"
+  , "package_priority" : "optional" 
+  , "package_homepage" : "https://minaprotocol.com/"
+  , "package_installed_size" : ""
+  , "package_source" : ""
+  , "architecture" : "amd64" 
+  , "githash" : "fakehash"
+  , "buildurl" : "localhost"
+}

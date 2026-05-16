@@ -8,28 +8,31 @@ The mina-release-toolkit is designed to handle the complete lifecycle of Mina Pr
 
 ## Components
 
-### 1. **deb-builder** (OCaml/Dune Submodule)
-A robust OCaml utility for building Debian packages with comprehensive configuration options and GPG signing capabilities.
+### 1. **deb-toolkit** (Rust Application)
+A Rust CLI for building, signing, and verifying Debian packages.
 
 **Key Features:**
-- **Template-based package generation** with extensive metadata support
-- **GPG signature verification** and content verification for package integrity  
+- **Template-based package generation** (minijinja) with extensive metadata support
+- **GPG signing** via `debsigs` and signature verification via `debsig-verify`
+- **Content verification** that compares a built `.deb` against expected metadata
 - **Flexible configuration system** supporting defaults files and CLI overrides
-- **Multi-platform support** for different Debian codenames (bullseye, focal)
-- **CI/CD integration** with Docker-based building and testing
+- **Multi-platform support** for different Debian codenames (bullseye, focal, noble, ...)
 
 **Architecture:**
-- `src/lib/builder.ml` - Core package building logic with ~70 configuration parameters
-- `src/lib/templates.ml` - Jingoo-based template system for Debian control files
-- `src/lib/signer.ml` - GPG signing functionality for package authentication
-- `src/lib/content_verifier.ml` - Package content validation
-- `ci/scripts/` - Build automation with Docker support
+- `src/builder.rs` - CLI-vs-defaults resolution and `fakeroot dpkg-deb` invocation
+- `src/templates.rs` - minijinja templates for control file + debsig policy
+- `src/signer.rs` - `debsigs` wrapper for package signing
+- `src/signature_verifier.rs` - `debsig-verify` orchestration with temp policy dir
+- `src/content_verifier.rs` - `dpkg-deb -I` parser and field comparison
+- `src/viewer.rs` - signing-key-id extraction
 
 **Usage:**
 ```bash
-cd deb-builder
-make dependencies && make build
-./target/deb_builder.exe --build-dir ./build --package-name mina-daemon --version 1.0.0
+cd deb-toolkit
+cargo build --release
+./target/release/deb-toolkit build --build-dir ./build \
+    --output-dir ./out --package-name mina-daemon --version 1.0.0 \
+    --suite stable --codename focal
 ```
 
 ### 2. **deb-s3** (Ruby Gem Submodule)  
@@ -155,7 +158,7 @@ The toolkit components work together in a coordinated release pipeline:
 
 1. **dhall-buildkite** defines CI/CD pipelines that trigger builds
 2. **buildkite-cache-manager.sh** handles artifact caching during builds  
-3. **deb-builder** creates Debian packages from build outputs
+3. **deb-toolkit** creates Debian packages from build outputs
 4. **release-manager** publishes packages to repositories and registries
 5. **deb-s3** manages APT repository manifests on S3
 6. **debian/repositories** validates published packages
@@ -163,8 +166,7 @@ The toolkit components work together in a coordinated release pipeline:
 ## Development Environment
 
 ### Prerequisites
-- **Rust** (1.70+) for release-manager
-- **OCaml/Dune** (4.14+) for deb-builder  
+- **Rust** (1.70+) for release-manager, deb-toolkit, buildkite-cache-manager, rust-buildkite
 - **Ruby** (2.7+) for deb-s3
 - **Dhall** (1.40+) for dhall-buildkite
 - **Docker** for containerized builds and testing
@@ -177,13 +179,13 @@ git clone --recurse-submodules https://github.com/MinaProtocol/mina-release-tool
 cd mina-release-toolkit
 
 # Build all components
-cd deb-builder && make build
-cd ../release-manager && cargo build --release  
+cd deb-toolkit && cargo build --release
+cd ../release-manager && cargo build --release
 cd ../dhall-buildkite && make all_checks
 cd ../deb-s3 && bundle install
 
 # Run tests
-cd deb-builder && make test
+cd deb-toolkit && cargo test
 cd ../release-manager && cargo test
 cd ../dhall-buildkite && make check_examples
 ```
@@ -261,7 +263,7 @@ This monorepo follows standard Git submodule practices. When making changes:
 1. Work in individual submodule directories for component-specific changes
 2. Update the main repository to reference new submodule commits
 3. Test the entire release pipeline with integration tests
-4. Follow each component's specific coding standards (OCaml, Rust, Ruby, Dhall)
+4. Follow each component's specific coding standards (Rust, Ruby, Dhall)
 
 ## License
 
