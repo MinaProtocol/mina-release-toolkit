@@ -68,6 +68,20 @@ jobs:
         cd release-manager
         cargo test --verbose
 
+    # Integration tests need Docker (for MinIO), deb-s3, dpkg-deb, and aws
+    # on PATH. GitHub-hosted Ubuntu runners already provide Docker, dpkg-deb,
+    # and aws; we just need to install deb-s3 (a Ruby gem). Skipped on macOS.
+    - name: Install integration test deps (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        sudo gem install deb-s3
+
+    - name: Run integration tests (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        cd release-manager
+        cargo test --features integration-test --verbose
+
   build:
     name: Build Binary
     runs-on: ubuntu-latest
