@@ -75,7 +75,7 @@ pub async fn execute(args: PublishArgs) -> ManagerResult<()> {
     for artifact in &artifacts {
         for codename in &codenames {
             match artifact {
-                Artifact::MinaLogproc => {
+                Artifact::MinaLogproc | Artifact::Minimina => {
                     if !args.only_dockers {
                         publish_debian(
                             &storage,
@@ -101,6 +101,82 @@ pub async fn execute(args: PublishArgs) -> ManagerResult<()> {
                             "ℹ️  There is no {} docker image to publish. skipping",
                             artifact.as_str()
                         );
+                    }
+                }
+
+                Artifact::MinaConfig
+                | Artifact::MinaAutomode
+                | Artifact::MinaPrefork
+                | Artifact::MinaPostfork
+                | Artifact::MinaPostforkMesa
+                | Artifact::MinaPreforkMesa => {
+                    for network in &networks {
+                        if !args.only_dockers {
+                            publish_debian(
+                                &storage,
+                                artifact.as_str(),
+                                codename,
+                                &args.source_version,
+                                &args.target_version,
+                                &args.channel,
+                                Some(network),
+                                args.verify,
+                                args.dry_run,
+                                &args.debian_repo,
+                                args.debian_sign_key.as_deref(),
+                                None,
+                                &args.buildkite_build_id,
+                                args.debug,
+                            )
+                            .await?;
+                        }
+                        if !args.only_debians {
+                            println!(
+                                "ℹ️  There is no {} docker image to publish. skipping",
+                                artifact.as_str()
+                            );
+                        }
+                    }
+                }
+
+                Artifact::MinaGeneric | Artifact::RosettaGeneric => {
+                    for network in &networks {
+                        if !args.only_dockers {
+                            publish_debian(
+                                &storage,
+                                artifact.as_str(),
+                                codename,
+                                &args.source_version,
+                                &args.target_version,
+                                &args.channel,
+                                Some(network),
+                                args.verify,
+                                args.dry_run,
+                                &args.debian_repo,
+                                args.debian_sign_key.as_deref(),
+                                None,
+                                &args.buildkite_build_id,
+                                args.debug,
+                            )
+                            .await?;
+                        }
+
+                        if !args.only_debians {
+                            // promote_and_verify_docker uses calculate_docker_tag,
+                            // which applies the get_docker_image_name mapping for
+                            // mina-generic / rosetta-generic.
+                            promote_and_verify_docker(
+                                artifact.as_str(),
+                                &args.source_version,
+                                &args.target_version,
+                                codename,
+                                network,
+                                args.publish_to_docker_io,
+                                args.verify,
+                                args.dry_run,
+                            )
+                            .await?;
+                        }
                     }
                 }
 
@@ -221,7 +297,7 @@ async fn publish_debian(
     )
     .await?;
 
-    let artifact_full_name = get_artifact_with_suffix(artifact, network);
+    let artifact_full_name = get_artifact_with_suffix(artifact, network, None);
 
     let new_name = new_artifact_name.unwrap_or(&artifact_full_name);
 
@@ -281,7 +357,7 @@ async fn publish_debian(
     );
     println!(
         "     📦  Target debian version: {}",
-        calculate_debian_version(artifact, target_version, codename, network)
+        calculate_debian_version(artifact, target_version, codename, network, None)
     );
 
     if !dry_run {
@@ -334,7 +410,7 @@ async fn promote_and_verify_docker(
 ) -> ManagerResult<()> {
     use crate::artifacts::get_suffix;
 
-    let network_suffix = get_suffix(artifact, Some(network));
+    let network_suffix = get_suffix(artifact, Some(network), None);
     let artifact_full_source_version = format!("{}-{}{}", source_version, codename, network_suffix);
     let artifact_full_target_version = format!("{}-{}{}", target_version, codename, network_suffix);
 
@@ -349,7 +425,9 @@ async fn promote_and_verify_docker(
             artifact,
             target_version,
             codename,
-            Some(network)
+            Some(network),
+            None,
+            None,
         )
     );
     println!();

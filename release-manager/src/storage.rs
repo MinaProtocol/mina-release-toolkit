@@ -253,7 +253,7 @@ pub async fn get_cached_debian_or_download(
 ) -> ManagerResult<()> {
     use crate::artifacts::get_artifact_with_suffix;
 
-    let artifact_full_name = get_artifact_with_suffix(artifact, network);
+    let artifact_full_name = get_artifact_with_suffix(artifact, network, None);
     let remote_path = format!(
         "{}/{}/debians/{}/{}_*",
         storage.backend.root_path(),

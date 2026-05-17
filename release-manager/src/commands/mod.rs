@@ -1,6 +1,9 @@
 pub mod fix;
 pub mod persist;
+pub mod progress;
 pub mod promote;
 pub mod publish;
 pub mod pull;
+pub mod reversion;
+pub mod validate;
 pub mod verify;

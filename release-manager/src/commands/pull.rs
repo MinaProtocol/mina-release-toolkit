@@ -39,7 +39,7 @@ pub async fn execute(args: PullArgs) -> ManagerResult<()> {
                     artifact, codename, network
                 );
 
-                let artifact_full_name = get_artifact_with_suffix(artifact, Some(network));
+                let artifact_full_name = get_artifact_with_suffix(artifact, Some(network), None);
                 let remote_path = format!(
                     "{}/{}/debians/{}/{}_*",
                     storage.backend.root_path(),

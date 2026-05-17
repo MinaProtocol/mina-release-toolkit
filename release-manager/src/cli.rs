@@ -4,6 +4,7 @@ pub const DEFAULT_ARTIFACTS: &str = "mina-logproc,mina-archive,mina-rosetta,mina
 pub const DEFAULT_NETWORKS: &str = "devnet,mainnet";
 pub const DEFAULT_CODENAMES: &str = "bullseye,focal";
 pub const DEFAULT_DEBIAN_REPO: &str = "packages.o1test.net";
+pub const DEFAULT_ARCHITECTURES: &str = "amd64";
 
 #[derive(Args)]
 pub struct PublishArgs {
@@ -242,6 +243,95 @@ pub struct PersistArgs {
     /// Enable debug mode to show external command execution
     #[arg(long)]
     pub debug: bool,
+}
+
+#[derive(Args)]
+pub struct ProgressArgs {
+    /// Target version to check (e.g. 3.0.0-rc1)
+    #[arg(long)]
+    pub version: String,
+
+    /// Target release: alpha, beta, or stable
+    #[arg(long)]
+    pub release: String,
+
+    /// Comma separated list of artifacts to check
+    #[arg(long, default_value = DEFAULT_ARTIFACTS)]
+    pub artifacts: String,
+
+    /// Comma separated list of codenames to check
+    #[arg(long, default_value = "bullseye,focal,jammy,noble,bookworm")]
+    pub codenames: String,
+
+    /// Build profile (e.g. lightnet, instrumented)
+    #[arg(long)]
+    pub profile: Option<String>,
+
+    /// Check only debian packages
+    #[arg(long)]
+    pub only_debians: bool,
+
+    /// Check only docker images
+    #[arg(long)]
+    pub only_dockers: bool,
+
+    /// Skip checking packages.minaprotocol.com repositories
+    #[arg(long)]
+    pub skip_mina_public: bool,
+}
+
+#[derive(Args)]
+pub struct ReversionArgs {
+    /// Folder with `{codename}/*.deb` structure (typically the output of `pull`)
+    #[arg(long)]
+    pub source_folder: String,
+
+    /// Folder to write reversioned debs into
+    #[arg(long)]
+    pub output_folder: String,
+
+    /// New version string (e.g. 3.0.0-rc1)
+    #[arg(long)]
+    pub new_version: String,
+
+    /// Replace the suite in the control file (e.g. stable, unstable)
+    #[arg(long)]
+    pub suite: Option<String>,
+
+    /// Rename the package (e.g. mina-devnet-hardfork)
+    #[arg(long)]
+    pub name: Option<String>,
+}
+
+#[derive(Args)]
+pub struct ValidateArgs {
+    /// Comma separated list of debian codenames
+    #[arg(long, default_value = DEFAULT_CODENAMES)]
+    pub codenames: String,
+
+    /// Target debian channel (required)
+    #[arg(long)]
+    pub channel: String,
+
+    /// Comma separated list of architectures
+    #[arg(long, default_value = DEFAULT_ARCHITECTURES)]
+    pub archs: String,
+
+    /// Debian repository bucket
+    #[arg(long, default_value = DEFAULT_DEBIAN_REPO)]
+    pub debian_repo: String,
+
+    /// GPG key ID used to re-sign InRelease when fixing
+    #[arg(long)]
+    pub debian_sign_key: Option<String>,
+
+    /// Repair broken manifests + re-sign InRelease + invalidate CDN cache
+    #[arg(long)]
+    pub fix: bool,
+
+    /// Only list packages; skip SHA256 verification
+    #[arg(long)]
+    pub list_only: bool,
 }
 
 #[derive(Args)]

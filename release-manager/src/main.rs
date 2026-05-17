@@ -8,6 +8,7 @@ mod commands;
 mod debian_publish;
 mod docker_promote;
 mod errors;
+mod process;
 mod reversion;
 mod storage;
 mod utils;
@@ -56,10 +57,16 @@ enum Commands {
     Verify(VerifyArgs),
     /// Fix debian package repository manifests
     Fix(FixArgs),
+    /// Validate a debian channel: list, SHA256-check, optionally repair + re-sign + invalidate CDN
+    Validate(ValidateArgs),
     /// Persist artifacts to long-term storage
     Persist(PersistArgs),
     /// Pull artifacts from cache to local directory
     Pull(PullArgs),
+    /// Reversion every .deb in a folder (as produced by `pull`)
+    Reversion(ReversionArgs),
+    /// Show release-progress report (what's published per channel/codename/arch)
+    Progress(ProgressArgs),
 }
 
 #[tokio::main]
@@ -78,8 +85,11 @@ async fn main() -> ManagerResult<()> {
         Commands::Promote(args) => commands::promote::execute(args).await,
         Commands::Verify(args) => commands::verify::execute(args).await,
         Commands::Fix(args) => commands::fix::execute(args).await,
+        Commands::Validate(args) => commands::validate::execute(args).await,
         Commands::Persist(args) => commands::persist::execute(args).await,
         Commands::Pull(args) => commands::pull::execute(args).await,
+        Commands::Reversion(args) => commands::reversion::execute(args).await,
+        Commands::Progress(args) => commands::progress::execute(args).await,
     };
 
     match result {
@@ -115,6 +125,9 @@ async fn check_prerequisites(command: &Commands) -> ManagerResult<()> {
             check_app("docker").await?;
         }
         Commands::Fix(_) => {
+            check_app("deb-s3").await?;
+        }
+        Commands::Validate(_) => {
             check_app("deb-s3").await?;
         }
         _ => {}
