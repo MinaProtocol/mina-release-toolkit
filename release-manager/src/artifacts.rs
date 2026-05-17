@@ -55,7 +55,6 @@ impl Artifact {
             Artifact::Minimina => "minimina",
         }
     }
-
 }
 
 /// Build profiles understood by manager.sh (`lightnet`, `instrumented`).
@@ -81,15 +80,8 @@ pub fn get_suffix(artifact: &str, network: Option<&str>, profile: Option<&str>) 
         // Network + optional profile
         "mina-daemon" | "mina-generic" => format!("{}{}", net, prof),
         // Network only (profile ignored)
-        "mina-rosetta"
-        | "mina-archive"
-        | "mina-config"
-        | "mina-automode"
-        | "mina-prefork"
-        | "mina-postfork"
-        | "rosetta-generic"
-        | "mina-postfork-mesa"
-        | "mina-prefork-mesa" => net,
+        "mina-rosetta" | "mina-archive" | "mina-config" | "mina-automode" | "mina-prefork"
+        | "mina-postfork" | "rosetta-generic" | "mina-postfork-mesa" | "mina-prefork-mesa" => net,
         // Neither network nor profile
         _ => String::new(),
     }
@@ -405,5 +397,4 @@ mod tests {
         assert_eq!(artifacts[2], Artifact::MinaGeneric);
         assert_eq!(artifacts[3], Artifact::Minimina);
     }
-
 }

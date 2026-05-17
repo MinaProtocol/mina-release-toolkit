@@ -189,7 +189,10 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                         .await?;
                     }
                     if !args.only_debians {
-                        println!("    ℹ️  There is no {} docker image. skipping", artifact.as_str());
+                        println!(
+                            "    ℹ️  There is no {} docker image. skipping",
+                            artifact.as_str()
+                        );
                     }
                 }
 
@@ -217,7 +220,10 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                             .await?;
                         }
                         if !args.only_debians {
-                            println!("    ℹ️  There is no {} docker image. skipping", artifact.as_str());
+                            println!(
+                                "    ℹ️  There is no {} docker image. skipping",
+                                artifact.as_str()
+                            );
                         }
                     }
                 }

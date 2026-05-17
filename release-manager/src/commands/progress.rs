@@ -1,8 +1,6 @@
 use std::process::Command;
 
-use crate::artifacts::{
-    get_arch_suffix, get_artifact_with_suffix, get_suffix, parse_string_list,
-};
+use crate::artifacts::{get_arch_suffix, get_artifact_with_suffix, get_suffix, parse_string_list};
 use crate::cli::ProgressArgs;
 use crate::errors::ManagerResult;
 

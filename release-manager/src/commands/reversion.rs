@@ -77,8 +77,10 @@ pub async fn execute(args: ReversionArgs) -> ManagerResult<()> {
             let pkg_version = parts[1];
             let pkg_name = parts[2];
             let final_name = args.name.as_deref().unwrap_or(pkg_name);
-            let output_file = output_codename_dir
-                .join(format!("{}_{}_{}.deb", final_name, args.new_version, pkg_arch));
+            let output_file = output_codename_dir.join(format!(
+                "{}_{}_{}.deb",
+                final_name, args.new_version, pkg_arch
+            ));
 
             // The internal reversion_debian_package writes alongside the source;
             // we then move into the requested output path.

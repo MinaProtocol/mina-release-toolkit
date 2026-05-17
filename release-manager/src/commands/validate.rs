@@ -43,16 +43,9 @@ pub async fn execute_with(
     let mut any_failed = false;
 
     for codename in &codenames {
-        println!(
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        );
-        println!(
-            "  {} / {} / {}",
-            args.debian_repo, codename, args.channel
-        );
-        println!(
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        );
+        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        println!("  {} / {} / {}", args.debian_repo, codename, args.channel);
+        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         println!();
 
         for arch in &archs {
@@ -92,14 +85,8 @@ pub async fn execute_with(
 
         if !args.list_only {
             for arch in &archs {
-                if !verify_sha256_for_arch(
-                    http,
-                    &args.debian_repo,
-                    codename,
-                    &args.channel,
-                    arch,
-                )
-                .await?
+                if !verify_sha256_for_arch(http, &args.debian_repo, codename, &args.channel, arch)
+                    .await?
                 {
                     any_failed = true;
                 }
@@ -144,10 +131,7 @@ pub async fn execute_with(
 
             if args.fix {
                 println!();
-                println!(
-                    " 🗑️  Invalidating CloudFront cache for {}...",
-                    codename
-                );
+                println!(" 🗑️  Invalidating CloudFront cache for {}...", codename);
                 invalidate_cloudfront(exec, &args.debian_repo, codename)?;
             }
         }
@@ -566,11 +550,7 @@ SHA256: deadbeef
             &["list"],
             CommandOutput::success("foo 1.0.0 amd64"),
         );
-        exec.expect_args_starting_with(
-            "deb-s3",
-            &["verify"],
-            CommandOutput::success("OK"),
-        );
+        exec.expect_args_starting_with("deb-s3", &["verify"], CommandOutput::success("OK"));
 
         let args = ValidateArgs {
             codenames: "bullseye".to_string(),
@@ -584,7 +564,10 @@ SHA256: deadbeef
 
         let http = reqwest::Client::new();
         let result = execute_with(args, &exec, &http, &S3Config::default()).await;
-        assert!(result.is_err(), "expected validate to fail on hash mismatch");
+        assert!(
+            result.is_err(),
+            "expected validate to fail on hash mismatch"
+        );
     }
 
     /// Real-binary integration test: spins up MinIO via testcontainers,
@@ -767,11 +750,8 @@ SHA256: deadbeef
             &["+short", "CNAME"],
             CommandOutput::success("\n"), // empty CNAME → skip path
         );
-        exec.mock.expect(
-            "aws",
-            |_| true,
-            CommandOutput::success(""),
-        );
+        exec.mock
+            .expect("aws", |_| true, CommandOutput::success(""));
 
         let args = ValidateArgs {
             codenames: "bullseye".to_string(),
@@ -849,13 +829,17 @@ SHA256: deadbeef
             .await;
 
         let exec = MockCommandExecutor::new();
-        exec.expect_args_starting_with(
+        exec.expect_args_starting_with("deb-s3", &["list"], CommandOutput::success(""));
+        exec.expect(
             "deb-s3",
-            &["list"],
-            CommandOutput::success(""),
+            |args| args.contains(&"--fix-manifests"),
+            CommandOutput::success("manifests fixed"),
         );
-        exec.expect("deb-s3", |args| args.contains(&"--fix-manifests"), CommandOutput::success("manifests fixed"));
-        exec.expect("dig", |args| args.contains(&"CNAME"), CommandOutput::success("d111.cloudfront.net.\n"));
+        exec.expect(
+            "dig",
+            |args| args.contains(&"CNAME"),
+            CommandOutput::success("d111.cloudfront.net.\n"),
+        );
         exec.expect(
             "aws",
             |args| args.contains(&"list-distributions"),

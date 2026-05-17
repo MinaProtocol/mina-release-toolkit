@@ -162,8 +162,7 @@ impl MockCommandExecutor {
         self.expect(
             program,
             move |args| {
-                args.len() >= prefix.len()
-                    && args.iter().zip(prefix.iter()).all(|(a, p)| a == p)
+                args.len() >= prefix.len() && args.iter().zip(prefix.iter()).all(|(a, p)| a == p)
             },
             output,
         );
@@ -225,8 +224,7 @@ impl CommandExecutor for MockCommandExecutor {
             }
         }
         // Unmatched: return a loud failure so tests notice.
-        let argv: HashMap<usize, &str> =
-            args.iter().enumerate().map(|(i, s)| (i, *s)).collect();
+        let argv: HashMap<usize, &str> = args.iter().enumerate().map(|(i, s)| (i, *s)).collect();
         Ok(CommandOutput {
             status: 127,
             stdout: String::new(),
@@ -259,11 +257,7 @@ mod tests {
             &["list"],
             CommandOutput::success("pkg1 1.0 amd64"),
         );
-        mock.expect_args_starting_with(
-            "deb-s3",
-            &["verify"],
-            CommandOutput::success("ok"),
-        );
+        mock.expect_args_starting_with("deb-s3", &["verify"], CommandOutput::success("ok"));
         let out = mock.run("deb-s3", &["list", "--bucket=foo"]).unwrap();
         assert_eq!(out.stdout, "pkg1 1.0 amd64");
         let out = mock.run("deb-s3", &["verify", "--bucket=foo"]).unwrap();
@@ -282,7 +276,12 @@ mod tests {
         let out = mock
             .run(
                 "aws",
-                &["cloudfront", "create-invalidation", "--distribution-id", "X"],
+                &[
+                    "cloudfront",
+                    "create-invalidation",
+                    "--distribution-id",
+                    "X",
+                ],
             )
             .unwrap();
         assert!(out.stdout.contains("INV123"));
