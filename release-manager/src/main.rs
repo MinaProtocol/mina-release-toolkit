@@ -8,6 +8,7 @@ mod commands;
 mod debian_publish;
 mod docker_promote;
 mod errors;
+mod process;
 mod reversion;
 mod storage;
 mod utils;

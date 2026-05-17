@@ -32,3 +32,4 @@ features = ["json", "stream"]
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.0"
+wiremock = "0.6"
