@@ -28,6 +28,7 @@ impl CommandOutput {
     }
 
     #[cfg(test)]
+    #[allow(dead_code)] // kept for future tests
     pub fn failure(status: i32, stderr: impl Into<String>) -> Self {
         CommandOutput {
             status,
@@ -38,6 +39,36 @@ impl CommandOutput {
 
     pub fn is_success(&self) -> bool {
         self.status == 0
+    }
+}
+
+/// Optional overrides for `deb-s3` invocations. Production leaves every
+/// field `None`/false so `deb-s3` talks to real AWS using whatever
+/// credentials/endpoint the environment already provides. Tests fill it in
+/// with the values that point at a local MinIO container.
+#[derive(Debug, Clone, Default)]
+pub struct S3Config {
+    pub endpoint: Option<String>,
+    pub access_key_id: Option<String>,
+    pub secret_access_key: Option<String>,
+    pub force_path_style: bool,
+}
+
+impl S3Config {
+    /// Append the flags this config represents to a `deb-s3` argv vector.
+    pub fn append_args(&self, args: &mut Vec<String>) {
+        if let Some(e) = &self.endpoint {
+            args.push(format!("--endpoint={}", e));
+        }
+        if let Some(k) = &self.access_key_id {
+            args.push(format!("--access-key-id={}", k));
+        }
+        if let Some(s) = &self.secret_access_key {
+            args.push(format!("--secret-access-key={}", s));
+        }
+        if self.force_path_style {
+            args.push("--force-path-style".to_string());
+        }
     }
 }
 
@@ -146,6 +177,36 @@ impl MockCommandExecutor {
             .iter()
             .filter(|c| c.program == program)
             .count()
+    }
+}
+
+/// Executor that runs some programs for real and mocks the rest. Useful for
+/// integration tests that want a real `deb-s3` against a MinIO container but
+/// don't want to depend on `dig`, `aws cloudfront`, etc.
+#[cfg(test)]
+pub struct MixedExecutor {
+    pub mock: MockCommandExecutor,
+    pub mocked_programs: std::collections::HashSet<String>,
+}
+
+#[cfg(test)]
+impl MixedExecutor {
+    pub fn new(mocked_programs: &[&str]) -> Self {
+        Self {
+            mock: MockCommandExecutor::new(),
+            mocked_programs: mocked_programs.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+}
+
+#[cfg(test)]
+impl CommandExecutor for MixedExecutor {
+    fn run(&self, program: &str, args: &[&str]) -> std::io::Result<CommandOutput> {
+        if self.mocked_programs.contains(program) {
+            self.mock.run(program, args)
+        } else {
+            RealExecutor.run(program, args)
+        }
     }
 }
 

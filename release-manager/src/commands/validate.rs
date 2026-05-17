@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use crate::artifacts::parse_string_list;
 use crate::cli::ValidateArgs;
 use crate::errors::{ManagerError, ManagerResult};
-use crate::process::{CommandExecutor, RealExecutor};
+use crate::process::{CommandExecutor, RealExecutor, S3Config};
 use crate::utils::print_operation_info;
 
 const S3_REGION: &str = "us-west-2";
@@ -12,16 +12,19 @@ const S3_REGION: &str = "us-west-2";
 pub async fn execute(args: ValidateArgs) -> ManagerResult<()> {
     let exec = RealExecutor;
     let client = reqwest::Client::new();
-    execute_with(args, &exec, &client).await
+    execute_with(args, &exec, &client, &S3Config::default()).await
 }
 
-/// Same as [`execute`], but with the external-process and HTTP dependencies
-/// injected. Tests use this with a `MockCommandExecutor` and a wiremock-
-/// backed `reqwest::Client`.
+/// Same as [`execute`], but with the external-process / HTTP / S3 endpoint
+/// dependencies injected. Tests use this with a `MockCommandExecutor` (or a
+/// `MixedExecutor` against MinIO), a wiremock-backed `reqwest::Client`, and
+/// an `S3Config` whose `endpoint` points at MinIO. Production callers pass
+/// `S3Config::default()`.
 pub async fn execute_with(
     args: ValidateArgs,
     exec: &dyn CommandExecutor,
     http: &reqwest::Client,
+    s3: &S3Config,
 ) -> ManagerResult<()> {
     let codenames = parse_string_list(&args.codenames);
     let archs = parse_string_list(&args.archs);
@@ -54,23 +57,29 @@ pub async fn execute_with(
 
         for arch in &archs {
             println!(" 📋 Packages [{}]:", arch);
-            let bucket_arg = format!("--bucket={}", args.debian_repo);
-            let region_arg = format!("--s3-region={}", S3_REGION);
+            // The bucket flag for `deb-s3 list` is the S3 bucket name —
+            // production passes the host name (e.g. `packages.o1test.net`),
+            // which doubles as the bucket. In tests with MinIO the
+            // `debian_repo` includes the endpoint URL plus the bucket
+            // (e.g. `http://127.0.0.1:9000/test-bucket`); the bucket name
+            // is the path suffix and the endpoint is supplied separately
+            // via `s3` config.
+            let bucket = bucket_name(&args.debian_repo);
+            let mut argv: Vec<String> = vec![
+                "list".to_string(),
+                format!("--bucket={}", bucket),
+                format!("--s3-region={}", S3_REGION),
+                "--codename".to_string(),
+                codename.to_string(),
+                "--component".to_string(),
+                args.channel.clone(),
+                "--arch".to_string(),
+                arch.to_string(),
+            ];
+            s3.append_args(&mut argv);
+            let argv_refs: Vec<&str> = argv.iter().map(String::as_str).collect();
             let out = exec
-                .run(
-                    "deb-s3",
-                    &[
-                        "list",
-                        &bucket_arg,
-                        &region_arg,
-                        "--codename",
-                        codename,
-                        "--component",
-                        &args.channel,
-                        "--arch",
-                        arch,
-                    ],
-                )
+                .run("deb-s3", &argv_refs)
                 .map_err(|e| ManagerError::ValidationError(format!("deb-s3 list: {}", e)))?;
             for line in out.stdout.lines() {
                 println!("    {}", line);
@@ -97,22 +106,19 @@ pub async fn execute_with(
             }
 
             println!(" 🔍 Verifying manifest structure...");
-            let bucket_arg = format!("--bucket={}", args.debian_repo);
-            let region_arg = format!("--s3-region={}", S3_REGION);
-            let codename_arg = format!("--codename={}", codename);
-            let component_arg = format!("--component={}", args.channel);
-            let mut verify_args: Vec<&str> = vec![
-                "verify",
-                &bucket_arg,
-                &region_arg,
-                &codename_arg,
-                &component_arg,
+            let bucket = bucket_name(&args.debian_repo);
+            let mut verify_args: Vec<String> = vec![
+                "verify".to_string(),
+                format!("--bucket={}", bucket),
+                format!("--s3-region={}", S3_REGION),
+                format!("--codename={}", codename),
+                format!("--component={}", args.channel),
             ];
             if args.fix {
-                verify_args.push("--fix-manifests");
+                verify_args.push("--fix-manifests".to_string());
                 if let Some(key) = args.debian_sign_key.as_deref() {
-                    verify_args.push("--sign");
-                    verify_args.push(key);
+                    verify_args.push("--sign".to_string());
+                    verify_args.push(key.to_string());
                     println!("    🔧 Fix mode: will repair manifests + re-sign InRelease");
                 } else {
                     println!(
@@ -121,8 +127,10 @@ pub async fn execute_with(
                     );
                 }
             }
+            s3.append_args(&mut verify_args);
+            let argv_refs: Vec<&str> = verify_args.iter().map(String::as_str).collect();
             let out = exec
-                .run("deb-s3", &verify_args)
+                .run("deb-s3", &argv_refs)
                 .map_err(|e| ManagerError::ValidationError(format!("deb-s3 verify: {}", e)))?;
             for line in out.stdout.lines() {
                 println!("    {}", line);
@@ -272,14 +280,29 @@ struct PackagesEntry {
 }
 
 /// Treat `debian_repo` as a URL base. If it already has a scheme (test setups
-/// pointing at a wiremock or MinIO at `http://127.0.0.1:PORT`), use it as-is;
-/// otherwise prepend `https://` to match production.
+/// pointing at a wiremock or MinIO at `http://127.0.0.1:PORT/bucket`), use
+/// it as-is; otherwise prepend `https://` to match production.
 fn repo_base(debian_repo: &str) -> String {
     if debian_repo.contains("://") {
         debian_repo.trim_end_matches('/').to_string()
     } else {
         format!("https://{}", debian_repo)
     }
+}
+
+/// Derive the S3 bucket name from a `debian_repo`. In production the host
+/// name is the bucket (`packages.o1test.net` → bucket `packages.o1test.net`).
+/// In tests the value is a full URL like `http://127.0.0.1:9000/test-bucket`,
+/// in which case the bucket is the path segment after the host.
+fn bucket_name(debian_repo: &str) -> String {
+    if let Some(after_scheme) = debian_repo.split_once("://") {
+        let rest = after_scheme.1.trim_end_matches('/');
+        if let Some((_, path)) = rest.split_once('/') {
+            return path.split('/').next().unwrap_or("").to_string();
+        }
+        return rest.to_string();
+    }
+    debian_repo.to_string()
 }
 
 fn parse_packages_file(body: &str) -> Vec<PackagesEntry> {
@@ -499,7 +522,7 @@ SHA256: deadbeef
         };
 
         let http = reqwest::Client::new();
-        let result = execute_with(args, &exec, &http).await;
+        let result = execute_with(args, &exec, &http, &S3Config::default()).await;
         assert!(result.is_ok(), "validate failed: {:?}", result.err());
 
         // Sanity: we hit deb-s3 twice (list + verify), nothing else
@@ -560,8 +583,254 @@ SHA256: deadbeef
         };
 
         let http = reqwest::Client::new();
-        let result = execute_with(args, &exec, &http).await;
+        let result = execute_with(args, &exec, &http, &S3Config::default()).await;
         assert!(result.is_err(), "expected validate to fail on hash mismatch");
+    }
+
+    /// Real-binary integration test: spins up MinIO via testcontainers,
+    /// uploads a real .deb with real `deb-s3`, then runs validate against
+    /// it (mocking only `dig` and `aws cloudfront` since this team uses
+    /// Hetzner / Cloudflare, not CloudFront).
+    ///
+    /// `#[ignore]`-gated because it needs Docker + `deb-s3` + `dpkg-deb` on
+    /// PATH. Run with: `cargo test -- --ignored validate_against_minio`.
+    #[tokio::test]
+    #[ignore]
+    async fn validate_against_minio() {
+        use crate::process::{CommandOutput, MixedExecutor};
+        use testcontainers_modules::minio::MinIO;
+        use testcontainers_modules::testcontainers::runners::AsyncRunner;
+
+        // Skip if the host tools aren't available.
+        for tool in ["docker", "deb-s3", "dpkg-deb"] {
+            if !command_available(tool) {
+                eprintln!("skipping validate_against_minio: {} not on PATH", tool);
+                return;
+            }
+        }
+
+        // ---- 1. start MinIO ----
+        let container = MinIO::default()
+            .start()
+            .await
+            .expect("minio container start");
+        let host_port = container
+            .get_host_port_ipv4(9000)
+            .await
+            .expect("minio port");
+        let endpoint = format!("http://127.0.0.1:{}", host_port);
+        let access_key = "minioadmin";
+        let secret_key = "minioadmin";
+        let bucket = "test-bucket";
+
+        // ---- 2. create bucket + make it world-readable ----
+        // Use the AWS SDK config via env so the `aws` CLI talks to MinIO.
+        let aws_env: Vec<(&str, &str)> = vec![
+            ("AWS_ACCESS_KEY_ID", access_key),
+            ("AWS_SECRET_ACCESS_KEY", secret_key),
+            ("AWS_REGION", "us-east-1"),
+            ("AWS_EC2_METADATA_DISABLED", "true"),
+        ];
+
+        if command_available("aws") {
+            run_with_env(
+                "aws",
+                &[
+                    "--endpoint-url",
+                    &endpoint,
+                    "s3",
+                    "mb",
+                    &format!("s3://{}", bucket),
+                ],
+                &aws_env,
+            );
+            // Public read on /dists/* and /pool/* so validate's bare-HTTP
+            // GETs (no AWS signing) can fetch the Packages file and the .deb.
+            let policy = serde_json::json!({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": "*",
+                    "Action": ["s3:GetObject"],
+                    "Resource": [
+                        format!("arn:aws:s3:::{}/dists/*", bucket),
+                        format!("arn:aws:s3:::{}/pool/*", bucket),
+                    ]
+                }]
+            })
+            .to_string();
+            let policy_file = std::env::temp_dir().join("minio-policy.json");
+            std::fs::write(&policy_file, &policy).unwrap();
+            run_with_env(
+                "aws",
+                &[
+                    "--endpoint-url",
+                    &endpoint,
+                    "s3api",
+                    "put-bucket-policy",
+                    "--bucket",
+                    bucket,
+                    "--policy",
+                    &format!("file://{}", policy_file.display()),
+                ],
+                &aws_env,
+            );
+        } else {
+            eprintln!("skipping: aws CLI required to provision bucket policy");
+            return;
+        }
+
+        // ---- 3. build a tiny .deb fixture ----
+        let tmp = tempfile::tempdir().unwrap();
+        let pkg_root = tmp.path().join("integration-pkg");
+        std::fs::create_dir_all(pkg_root.join("DEBIAN")).unwrap();
+        std::fs::create_dir_all(pkg_root.join("usr/share/doc/integration-pkg")).unwrap();
+        std::fs::write(
+            pkg_root.join("DEBIAN/control"),
+            "Package: integration-pkg\n\
+             Version: 1.0.0\n\
+             Architecture: amd64\n\
+             Maintainer: test@example.com\n\
+             Description: integration test fixture\n",
+        )
+        .unwrap();
+        std::fs::write(
+            pkg_root.join("usr/share/doc/integration-pkg/README"),
+            "hello\n",
+        )
+        .unwrap();
+        let deb_path = tmp.path().join("integration-pkg_1.0.0_amd64.deb");
+        let out = std::process::Command::new("dpkg-deb")
+            .args(["-Zgzip", "--build"])
+            .arg(&pkg_root)
+            .arg(&deb_path)
+            .output()
+            .expect("dpkg-deb");
+        assert!(
+            out.status.success(),
+            "dpkg-deb failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+
+        // ---- 4. real deb-s3 upload to MinIO ----
+        let out = std::process::Command::new("deb-s3")
+            .args([
+                "upload",
+                "--bucket",
+                bucket,
+                "--endpoint",
+                &endpoint,
+                "--access-key-id",
+                access_key,
+                "--secret-access-key",
+                secret_key,
+                "--force-path-style",
+                "--codename",
+                "bullseye",
+                "--component",
+                "develop",
+                "--arch",
+                "amd64",
+                "--preserve-versions",
+                "--visibility",
+                "public",
+            ])
+            .arg(&deb_path)
+            .output()
+            .expect("deb-s3 upload");
+        assert!(
+            out.status.success(),
+            "deb-s3 upload failed:\nstdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+
+        // ---- 5. run validate against MinIO ----
+        // deb-s3 invocations in our code don't set the endpoint/keys
+        // automatically. Set them in the *process* environment so the
+        // subprocess inherits them, then route deb-s3 through the real
+        // executor (Mixed mocks only dig + aws).
+        for (k, v) in &aws_env {
+            std::env::set_var(k, v);
+        }
+        // Wrap deb-s3 calls with a shim that injects the MinIO endpoint+keys.
+        // Simpler approach: prepend the args via an env-aware test PATH.
+        // For this test we instead bypass that by patching our code path to
+        // hit MinIO directly through env vars deb-s3 already understands —
+        // it accepts --endpoint via env: AWS_S3_ENDPOINT.
+        std::env::set_var("AWS_S3_ENDPOINT", &endpoint);
+
+        let exec = MixedExecutor::new(&["dig", "aws"]);
+        // Mock the cloud-stuff; we use Hetzner/Cloudflare, not CloudFront.
+        exec.mock.expect_args_starting_with(
+            "dig",
+            &["+short", "CNAME"],
+            CommandOutput::success("\n"), // empty CNAME → skip path
+        );
+        exec.mock.expect(
+            "aws",
+            |_| true,
+            CommandOutput::success(""),
+        );
+
+        let args = ValidateArgs {
+            codenames: "bullseye".to_string(),
+            channel: "develop".to_string(),
+            archs: "amd64".to_string(),
+            debian_repo: format!("{}/{}", endpoint, bucket),
+            debian_sign_key: None,
+            fix: false,
+            list_only: false,
+        };
+
+        // Real deb-s3 calls go through MixedExecutor → RealExecutor; the
+        // S3Config injects --endpoint/keys/--force-path-style so each
+        // invocation points at MinIO. dig + aws stay mocked (we use
+        // Hetzner/Cloudflare in production, not CloudFront).
+        let s3 = S3Config {
+            endpoint: Some(endpoint.clone()),
+            access_key_id: Some(access_key.to_string()),
+            secret_access_key: Some(secret_key.to_string()),
+            force_path_style: true,
+        };
+
+        let http = reqwest::Client::new();
+        let result = execute_with(args, &exec, &http, &s3).await;
+        assert!(
+            result.is_ok(),
+            "validate against MinIO failed: {:?}",
+            result.err()
+        );
+    }
+
+    fn command_available(cmd: &str) -> bool {
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("command -v {} >/dev/null 2>&1", cmd))
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+
+    fn run_with_env(program: &str, args: &[&str], env: &[(&str, &str)]) {
+        let mut cmd = std::process::Command::new(program);
+        cmd.args(args);
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        let out = cmd
+            .output()
+            .unwrap_or_else(|e| panic!("spawn {} failed: {}", program, e));
+        if !out.status.success() {
+            eprintln!(
+                "[{} {:?}] exited {}: {} / {}",
+                program,
+                args,
+                out.status,
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
     }
 
     #[tokio::test]
@@ -609,7 +878,7 @@ SHA256: deadbeef
         };
 
         let http = reqwest::Client::new();
-        let result = execute_with(args, &exec, &http).await;
+        let result = execute_with(args, &exec, &http, &S3Config::default()).await;
         assert!(result.is_ok(), "validate --fix failed: {:?}", result.err());
 
         // Verify the right things were invoked
