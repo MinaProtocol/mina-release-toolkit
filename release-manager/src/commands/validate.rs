@@ -575,10 +575,11 @@ SHA256: deadbeef
     /// it (mocking only `dig` and `aws cloudfront` since this team uses
     /// Hetzner / Cloudflare, not CloudFront).
     ///
-    /// `#[ignore]`-gated because it needs Docker + `deb-s3` + `dpkg-deb` on
-    /// PATH. Run with: `cargo test -- --ignored validate_against_minio`.
+    /// Gated behind the `integration-test` feature because it needs Docker
+    /// + `deb-s3` + `dpkg-deb` + `aws` on PATH. Run with:
+    /// `cargo test --features integration-test validate_against_minio`.
+    #[cfg(feature = "integration-test")]
     #[tokio::test]
-    #[ignore]
     async fn validate_against_minio() {
         use crate::process::{CommandOutput, MixedExecutor};
         use testcontainers_modules::minio::MinIO;
