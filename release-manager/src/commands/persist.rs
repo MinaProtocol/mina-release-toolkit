@@ -81,7 +81,7 @@ pub async fn execute(args: PersistArgs) -> ManagerResult<()> {
             if let Some(deb_path) = deb_file {
                 let source_version =
                     extract_version_from_deb(&deb_path.file_name().unwrap().to_string_lossy())?;
-                let artifact_full_name = get_artifact_with_suffix(artifact, None);
+                let artifact_full_name = get_artifact_with_suffix(artifact, None, None);
 
                 println!(
                     " 🗃️  Rebuilding {} debian from {} to {}",

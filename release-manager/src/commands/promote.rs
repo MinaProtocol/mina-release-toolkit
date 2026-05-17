@@ -73,7 +73,7 @@ pub async fn execute(args: PromoteArgs) -> ManagerResult<()> {
     for artifact in &artifacts {
         for codename in &codenames {
             match artifact {
-                Artifact::MinaLogproc => {
+                Artifact::MinaLogproc | Artifact::Minimina => {
                     if !args.only_dockers {
                         promote_debian(
                             artifact.as_str(),
@@ -94,8 +94,82 @@ pub async fn execute(args: PromoteArgs) -> ManagerResult<()> {
 
                     if !args.only_debians {
                         println!(
-                            "   ℹ️  There is no mina-logproc docker image to promote. skipping"
+                            "   ℹ️  There is no {} docker image to promote. skipping",
+                            artifact.as_str()
                         );
+                    }
+                }
+
+                Artifact::MinaConfig
+                | Artifact::MinaAutomode
+                | Artifact::MinaPrefork
+                | Artifact::MinaPostfork
+                | Artifact::MinaPostforkMesa
+                | Artifact::MinaPreforkMesa => {
+                    for network in &networks {
+                        if !args.only_dockers {
+                            promote_debian(
+                                artifact.as_str(),
+                                codename,
+                                &args.source_version,
+                                &args.target_version,
+                                args.source_channel.as_deref().unwrap(),
+                                args.target_channel.as_deref().unwrap(),
+                                Some(network),
+                                args.verify,
+                                args.dry_run,
+                                &args.debian_repo,
+                                args.debian_sign_key.as_deref(),
+                                args.debug,
+                            )
+                            .await?;
+                        }
+                        if !args.only_debians {
+                            println!(
+                                "   ℹ️  There is no {} docker image to promote. skipping",
+                                artifact.as_str()
+                            );
+                        }
+                    }
+                }
+
+                Artifact::MinaGeneric | Artifact::RosettaGeneric => {
+                    for network in &networks {
+                        if !args.only_dockers {
+                            promote_debian(
+                                artifact.as_str(),
+                                codename,
+                                &args.source_version,
+                                &args.target_version,
+                                args.source_channel.as_deref().unwrap(),
+                                args.target_channel.as_deref().unwrap(),
+                                Some(network),
+                                args.verify,
+                                args.dry_run,
+                                &args.debian_repo,
+                                args.debian_sign_key.as_deref(),
+                                args.debug,
+                            )
+                            .await?;
+                        }
+
+                        if !args.only_debians {
+                            // calculate_docker_tag inside promote_and_verify_docker
+                            // applies the docker-name mapping for the *-generic
+                            // artifacts.
+                            promote_and_verify_docker(
+                                artifact.as_str(),
+                                &args.source_version,
+                                &args.target_version,
+                                codename,
+                                network,
+                                args.publish_to_docker_io,
+                                args.verify,
+                                args.dry_run,
+                                args.debug,
+                            )
+                            .await?;
+                        }
                     }
                 }
 
@@ -200,10 +274,10 @@ async fn promote_debian(
     );
     println!(
         "    📦 Target debian version: {}",
-        calculate_debian_version(artifact, target_version, codename, network)
+        calculate_debian_version(artifact, target_version, codename, network, None)
     );
 
-    let artifact_full_name = get_artifact_with_suffix(artifact, network);
+    let artifact_full_name = get_artifact_with_suffix(artifact, network, None);
 
     if !dry_run {
         println!(
@@ -258,7 +332,7 @@ async fn promote_and_verify_docker(
     dry_run: bool,
     _debug: bool,
 ) -> ManagerResult<()> {
-    let network_suffix = get_suffix(artifact, Some(network));
+    let network_suffix = get_suffix(artifact, Some(network), None);
     let artifact_full_source_version = format!("{}-{}{}", source_version, codename, network_suffix);
     let artifact_full_target_version = format!("{}-{}{}", target_version, codename, network_suffix);
 
@@ -273,7 +347,9 @@ async fn promote_and_verify_docker(
             artifact,
             target_version,
             codename,
-            Some(network)
+            Some(network),
+            None,
+            None,
         )
     );
     println!();

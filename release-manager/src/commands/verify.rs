@@ -68,7 +68,7 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                 Artifact::MinaArchive => {
                     for network in &networks {
                         let artifact_full_name =
-                            get_artifact_with_suffix(artifact.as_str(), Some(network));
+                            get_artifact_with_suffix(artifact.as_str(), Some(network), None);
                         let docker_suffix_combined =
                             combine_docker_suffixes(network, args.docker_suffix.as_deref());
 
@@ -98,7 +98,9 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                                     artifact.as_str(),
                                     &args.version,
                                     codename,
-                                    Some(network)
+                                    Some(network),
+                                    None,
+                                    None,
                                 )
                             );
 
@@ -119,7 +121,7 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                 Artifact::MinaRosetta => {
                     for network in &networks {
                         let artifact_full_name =
-                            get_artifact_with_suffix(artifact.as_str(), Some(network));
+                            get_artifact_with_suffix(artifact.as_str(), Some(network), None);
                         let docker_suffix_combined =
                             combine_docker_suffixes(network, args.docker_suffix.as_deref());
 
@@ -150,7 +152,9 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                                     &artifact_full_name,
                                     &args.version,
                                     codename,
-                                    None
+                                    None,
+                                    None,
+                                    None,
                                 )
                             );
                             println!();
@@ -169,10 +173,110 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                     }
                 }
 
+                Artifact::Minimina => {
+                    if !args.only_dockers {
+                        println!("     📋  Verifying: {} debian on {} channel with {} version for {} codename",
+                                 artifact.as_str(), args.channel, args.version, codename);
+                        verify_debian(
+                            artifact.as_str(),
+                            &args.version,
+                            codename,
+                            &args.debian_repo,
+                            &args.channel,
+                            args.signed_debian_repo,
+                            args.debug,
+                        )
+                        .await?;
+                    }
+                    if !args.only_debians {
+                        println!("    ℹ️  There is no {} docker image. skipping", artifact.as_str());
+                    }
+                }
+
+                Artifact::MinaConfig
+                | Artifact::MinaAutomode
+                | Artifact::MinaPrefork
+                | Artifact::MinaPostfork
+                | Artifact::MinaPostforkMesa
+                | Artifact::MinaPreforkMesa => {
+                    for network in &networks {
+                        let artifact_full_name =
+                            get_artifact_with_suffix(artifact.as_str(), Some(network), None);
+                        if !args.only_dockers {
+                            println!("     📋  Verifying: {} debian on {} channel with {} version for {} codename",
+                                     artifact_full_name, args.channel, args.version, codename);
+                            verify_debian(
+                                &artifact_full_name,
+                                &args.version,
+                                codename,
+                                &args.debian_repo,
+                                &args.channel,
+                                args.signed_debian_repo,
+                                args.debug,
+                            )
+                            .await?;
+                        }
+                        if !args.only_debians {
+                            println!("    ℹ️  There is no {} docker image. skipping", artifact.as_str());
+                        }
+                    }
+                }
+
+                Artifact::MinaGeneric | Artifact::RosettaGeneric => {
+                    for network in &networks {
+                        let artifact_full_name =
+                            get_artifact_with_suffix(artifact.as_str(), Some(network), None);
+                        let docker_suffix_combined =
+                            combine_docker_suffixes(network, args.docker_suffix.as_deref());
+
+                        if !args.only_dockers {
+                            println!("     📋  Verifying: {} debian on {} channel with {} version for {} codename",
+                                     artifact_full_name, args.channel, args.version, codename);
+                            verify_debian(
+                                &artifact_full_name,
+                                &args.version,
+                                codename,
+                                &args.debian_repo,
+                                &args.channel,
+                                args.signed_debian_repo,
+                                args.debug,
+                            )
+                            .await?;
+                        }
+
+                        if !args.only_debians {
+                            // calculate_docker_tag applies the get_docker_image_name
+                            // mapping (mina-generic -> mina-daemon, rosetta-generic -> mina-rosetta).
+                            println!(
+                                "      📋  Verifying: {} docker on {}",
+                                artifact.as_str(),
+                                calculate_docker_tag(
+                                    args.docker_io,
+                                    artifact.as_str(),
+                                    &args.version,
+                                    codename,
+                                    Some(network),
+                                    None,
+                                    None,
+                                )
+                            );
+                            verify_docker(
+                                crate::artifacts::get_docker_image_name(artifact.as_str()),
+                                &args.version,
+                                codename,
+                                &docker_suffix_combined,
+                                repo,
+                                args.debug,
+                            )
+                            .await?;
+                        }
+                    }
+                }
+
                 Artifact::MinaDaemon => {
                     for network in &networks {
                         let artifact_full_name =
-                            get_artifact_with_suffix(artifact.as_str(), Some(network));
+                            get_artifact_with_suffix(artifact.as_str(), Some(network), None);
                         let docker_suffix_combined =
                             combine_docker_suffixes(network, args.docker_suffix.as_deref());
 
@@ -203,7 +307,9 @@ pub async fn execute(args: VerifyArgs) -> ManagerResult<()> {
                                     &artifact_full_name,
                                     &args.version,
                                     codename,
-                                    None
+                                    None,
+                                    None,
+                                    None,
                                 )
                             );
                             println!();
