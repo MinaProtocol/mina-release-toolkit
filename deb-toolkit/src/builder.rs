@@ -87,8 +87,10 @@ pub fn evaluate_and_validate(args: &BuildArgs) -> Result<Input> {
 
     let depends = merge_list(split_csv(&m.depends), defaults.depends);
     let suggested_depends = merge_list(split_csv(&m.suggested_depends), defaults.suggested_depends);
-    let recommended_depends =
-        merge_list(split_csv(&m.recommended_depends), defaults.recommended_depends);
+    let recommended_depends = merge_list(
+        split_csv(&m.recommended_depends),
+        defaults.recommended_depends,
+    );
     let pre_depends = merge_list(split_csv(&m.pre_depends), defaults.pre_depends);
     let conflicts = merge_list(split_csv(&m.conflicts), defaults.conflicts);
     let replaces = merge_list(split_csv(&m.replaces), defaults.replaces);

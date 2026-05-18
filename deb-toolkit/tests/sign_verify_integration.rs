@@ -54,7 +54,12 @@ fn fs_copy(src: &Path, dst: &Path) -> std::io::Result<()> {
 fn import_secret_key(secret_key: &Path, gnupg_home: &Path) -> String {
     let out = Command::new("gpg")
         .env("GNUPGHOME", gnupg_home)
-        .args(["--import", "--import-options", "import-show", "--with-colons"])
+        .args([
+            "--import",
+            "--import-options",
+            "import-show",
+            "--with-colons",
+        ])
         .arg(secret_key)
         .output()
         .expect("spawn gpg --import");
@@ -80,7 +85,10 @@ fn import_secret_key(secret_key: &Path, gnupg_home: &Path) -> String {
 fn build_sign_verify_end_to_end() {
     for tool in ["fakeroot", "dpkg-deb", "debsigs", "debsig-verify", "gpg"] {
         if !have(tool) {
-            eprintln!("skipping build_sign_verify_end_to_end: {} not on PATH", tool);
+            eprintln!(
+                "skipping build_sign_verify_end_to_end: {} not on PATH",
+                tool
+            );
             return;
         }
     }

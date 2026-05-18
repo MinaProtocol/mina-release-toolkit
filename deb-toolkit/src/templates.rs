@@ -93,18 +93,54 @@ pub fn format_control_file(input: &DebianControl) -> Result<String> {
     let tmpl = env.get_template("control")?;
 
     let properties: Vec<Property> = vec![
-        Property { name: "Package", value: input.package_name.clone() },
-        Property { name: "Version", value: input.version.clone() },
-        Property { name: "Architecture", value: input.architecture.clone() },
-        Property { name: "Maintainer", value: input.package_maintainer.clone() },
-        Property { name: "Section", value: input.package_section.clone() },
-        Property { name: "Priority", value: input.package_priority.clone() },
-        Property { name: "Homepage", value: input.package_homepage.clone() },
-        Property { name: "Installed-Size", value: input.package_installed_size.clone() },
-        Property { name: "Source", value: input.package_source.clone() },
-        Property { name: "Suite", value: input.suite.clone() },
-        Property { name: "Codename", value: input.codename.clone() },
-        Property { name: "License", value: input.license.clone() },
+        Property {
+            name: "Package",
+            value: input.package_name.clone(),
+        },
+        Property {
+            name: "Version",
+            value: input.version.clone(),
+        },
+        Property {
+            name: "Architecture",
+            value: input.architecture.clone(),
+        },
+        Property {
+            name: "Maintainer",
+            value: input.package_maintainer.clone(),
+        },
+        Property {
+            name: "Section",
+            value: input.package_section.clone(),
+        },
+        Property {
+            name: "Priority",
+            value: input.package_priority.clone(),
+        },
+        Property {
+            name: "Homepage",
+            value: input.package_homepage.clone(),
+        },
+        Property {
+            name: "Installed-Size",
+            value: input.package_installed_size.clone(),
+        },
+        Property {
+            name: "Source",
+            value: input.package_source.clone(),
+        },
+        Property {
+            name: "Suite",
+            value: input.suite.clone(),
+        },
+        Property {
+            name: "Codename",
+            value: input.codename.clone(),
+        },
+        Property {
+            name: "License",
+            value: input.license.clone(),
+        },
     ];
 
     tmpl.render(context! {

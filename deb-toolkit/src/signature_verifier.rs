@@ -51,24 +51,24 @@ pub fn verify(deb: &str, public_key_file: Option<&str>, debug: bool) -> Result<(
             );
         }
         Some(public_key_file) => {
-            let resolved: std::path::PathBuf =
-                if public_key_file.starts_with("http://") || public_key_file.starts_with("https://")
-                {
-                    let temp_file = temp_dir.join("downloaded_key.gpg");
-                    download_file(public_key_file, &temp_file, debug).map_err(|_| {
-                        anyhow!(
-                            "Failed to download public key file from URL {}",
-                            public_key_file
-                        )
-                    })?;
-                    log::debug!(
-                        "Downloaded public key file from URL to {}",
-                        temp_file.display()
-                    );
-                    temp_file
-                } else {
-                    Path::new(public_key_file).to_path_buf()
-                };
+            let resolved: std::path::PathBuf = if public_key_file.starts_with("http://")
+                || public_key_file.starts_with("https://")
+            {
+                let temp_file = temp_dir.join("downloaded_key.gpg");
+                download_file(public_key_file, &temp_file, debug).map_err(|_| {
+                    anyhow!(
+                        "Failed to download public key file from URL {}",
+                        public_key_file
+                    )
+                })?;
+                log::debug!(
+                    "Downloaded public key file from URL to {}",
+                    temp_file.display()
+                );
+                temp_file
+            } else {
+                Path::new(public_key_file).to_path_buf()
+            };
 
             log::debug!(
                 "Public key file provided. Assuming policy and key resides in {}",

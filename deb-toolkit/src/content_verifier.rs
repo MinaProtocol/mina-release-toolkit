@@ -109,8 +109,7 @@ pub fn parse_dpkg_deb_output(text: &str) -> Result<DpkgDebOutput> {
 
     let package_name = take("Package").ok_or_else(|| anyhow!("Package field missing"))?;
     let version = take("Version").ok_or_else(|| anyhow!("Version field missing"))?;
-    let architecture =
-        take("Architecture").ok_or_else(|| anyhow!("Architecture field missing"))?;
+    let architecture = take("Architecture").ok_or_else(|| anyhow!("Architecture field missing"))?;
 
     // Description is multi-line. The OCaml original looked for a trailer
     // "Built from <githash> by <buildurl>" embedded in the body.
@@ -206,12 +205,7 @@ fn check_optional(expected: Option<&str>, actual: Option<&str>, name: &str) -> R
             expected.unwrap()
         )),
         (Some(e), Some(a)) if e == a => Ok(()),
-        (Some(e), Some(a)) => Err(anyhow!(
-            "{} mismatch. Expected: {}, Actual: {}",
-            name,
-            e,
-            a
-        )),
+        (Some(e), Some(a)) => Err(anyhow!("{} mismatch. Expected: {}, Actual: {}", name, e, a)),
     }
 }
 
@@ -229,11 +223,7 @@ fn check_list(expected: &Option<Vec<String>>, actual: &[String], name: &str) -> 
     if missing.is_empty() {
         Ok(())
     } else {
-        Err(anyhow!(
-            "{} mismatch. Missing: {}",
-            name,
-            missing.join(",")
-        ))
+        Err(anyhow!("{} mismatch. Missing: {}", name, missing.join(",")))
     }
 }
 
@@ -267,8 +257,10 @@ pub fn verify(args: &VerifyContentArgs) -> Result<()> {
 
     let depends = merge_list(split_csv(&m.depends), defaults.depends);
     let suggested_depends = merge_list(split_csv(&m.suggested_depends), defaults.suggested_depends);
-    let recommended_depends =
-        merge_list(split_csv(&m.recommended_depends), defaults.recommended_depends);
+    let recommended_depends = merge_list(
+        split_csv(&m.recommended_depends),
+        defaults.recommended_depends,
+    );
     let pre_depends = merge_list(split_csv(&m.pre_depends), defaults.pre_depends);
     let conflicts = merge_list(split_csv(&m.conflicts), defaults.conflicts);
     let replaces = merge_list(split_csv(&m.replaces), defaults.replaces);
@@ -301,9 +293,12 @@ pub fn verify(args: &VerifyContentArgs) -> Result<()> {
         .and_then(|s| s.to_str())
         .ok_or_else(|| anyhow!("Cannot derive filename from {}", args.deb))?;
     let stem = filename.strip_suffix(".deb").unwrap_or(filename);
-    let (expected_pkg, expected_ver) = stem
-        .split_once('_')
-        .ok_or_else(|| anyhow!("Filename {} is not in <package>_<version>.deb form", filename))?;
+    let (expected_pkg, expected_ver) = stem.split_once('_').ok_or_else(|| {
+        anyhow!(
+            "Filename {} is not in <package>_<version>.deb form",
+            filename
+        )
+    })?;
 
     check_required(expected_pkg, &deb_output.package_name, "Package")?;
     check_required(expected_ver, &deb_output.version, "Version")?;
@@ -349,11 +344,7 @@ pub fn verify(args: &VerifyContentArgs) -> Result<()> {
         deb_output.buildurl.as_deref(),
         "Buildurl",
     )?;
-    check_optional(
-        args.suite.as_deref(),
-        deb_output.suite.as_deref(),
-        "Suite",
-    )?;
+    check_optional(args.suite.as_deref(), deb_output.suite.as_deref(), "Suite")?;
     check_optional(
         args.codename.as_deref(),
         deb_output.codename.as_deref(),
@@ -361,7 +352,11 @@ pub fn verify(args: &VerifyContentArgs) -> Result<()> {
     )?;
 
     check_list(&depends, &deb_output.depends, "Depends")?;
-    check_list(&suggested_depends, &deb_output.suggested_depends, "Suggests")?;
+    check_list(
+        &suggested_depends,
+        &deb_output.suggested_depends,
+        "Suggests",
+    )?;
     check_list(
         &recommended_depends,
         &deb_output.recommended_depends,
@@ -476,11 +471,7 @@ mod tests {
     fn missing_required_field_errors() {
         let txt = " Package: foo\n Version: 1.0\n";
         let err = parse_dpkg_deb_output(txt).unwrap_err();
-        assert!(
-            err.to_string().contains("Architecture"),
-            "got: {}",
-            err
-        );
+        assert!(err.to_string().contains("Architecture"), "got: {}", err);
     }
 
     #[test]

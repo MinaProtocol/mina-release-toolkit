@@ -3,6 +3,7 @@ pub mod cli;
 pub mod content_verifier;
 pub mod defaults;
 pub mod misc;
+pub mod session;
 pub mod signature_verifier;
 pub mod signer;
 pub mod templates;

@@ -27,6 +27,118 @@ pub enum Command {
         #[command(subcommand)]
         subcommand: LookupCommand,
     },
+    /// Transactional .deb modification (open / mutate / save)
+    Session {
+        #[command(subcommand)]
+        subcommand: SessionCommand,
+    },
+}
+
+/// Verbs accepted under `deb-toolkit session …`. Mirror the bash
+/// `deb-session-*.sh` family on mina's develop branch.
+#[derive(Subcommand, Debug)]
+pub enum SessionCommand {
+    /// Extract a .deb into a session directory for modification
+    Open(SessionOpenArgs),
+    /// Repack a session directory into a fresh .deb
+    Save(SessionSaveArgs),
+    /// Print the value of a control-file field
+    #[command(name = "read-field")]
+    ReadField(SessionReadFieldArgs),
+    /// Insert one or more files into the package
+    Insert(SessionInsertArgs),
+    /// Remove file(s) matching a pattern from the package
+    Remove(SessionRemoveArgs),
+    /// Move / rename a file within the package
+    Move(SessionMoveArgs),
+    /// Replace file(s) matching a pattern with a new file
+    Replace(SessionReplaceArgs),
+    /// Rename the package (Package: field)
+    #[command(name = "rename-package")]
+    RenamePackage(SessionRenamePackageArgs),
+    /// Set the Suite: field
+    #[command(name = "replace-suite")]
+    ReplaceSuite(SessionReplaceSuiteArgs),
+    /// Set the Version: field, optionally rewriting dep version constraints
+    Reversion(SessionReversionArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct SessionOpenArgs {
+    /// Path to the .deb file to open
+    pub input_deb: String,
+    /// Directory where the session will be created
+    pub session_dir: String,
+}
+
+#[derive(Args, Debug)]
+pub struct SessionSaveArgs {
+    /// Session directory created by `session open`
+    pub session_dir: String,
+    /// Output path for the generated .deb
+    pub output_deb: String,
+    /// Verify the produced package with `dpkg-deb --info`
+    #[arg(long = "verify", default_value_t = false)]
+    pub verify: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct SessionReadFieldArgs {
+    pub session_dir: String,
+    pub field: String,
+}
+
+#[derive(Args, Debug)]
+pub struct SessionInsertArgs {
+    /// Treat `dest` as a directory (files keep their names)
+    #[arg(short = 'd', long = "directory", default_value_t = false)]
+    pub directory: bool,
+    pub session_dir: String,
+    pub dest: String,
+    /// One or more source files to insert
+    #[arg(num_args = 1..)]
+    pub sources: Vec<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct SessionRemoveArgs {
+    pub session_dir: String,
+    pub pattern: String,
+}
+
+#[derive(Args, Debug)]
+pub struct SessionMoveArgs {
+    pub session_dir: String,
+    pub source: String,
+    pub destination: String,
+}
+
+#[derive(Args, Debug)]
+pub struct SessionReplaceArgs {
+    pub session_dir: String,
+    pub pattern: String,
+    pub replacement: String,
+}
+
+#[derive(Args, Debug)]
+pub struct SessionRenamePackageArgs {
+    pub session_dir: String,
+    pub new_name: String,
+}
+
+#[derive(Args, Debug)]
+pub struct SessionReplaceSuiteArgs {
+    pub session_dir: String,
+    pub new_suite: String,
+}
+
+#[derive(Args, Debug)]
+pub struct SessionReversionArgs {
+    pub session_dir: String,
+    pub new_version: String,
+    /// Also rewrite version constraints in Depends / Pre-Depends / etc.
+    #[arg(long = "update-deps", default_value_t = false)]
+    pub update_deps: bool,
 }
 
 #[derive(Subcommand, Debug)]
