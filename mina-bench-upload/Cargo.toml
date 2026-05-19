@@ -1,0 +1,34 @@
+[package]
+name = "mina-bench-upload"
+version = "0.1.0"
+edition = "2021"
+authors = ["Mina Protocol Team"]
+description = "Parse Mina benchmark output and upload to InfluxDB. Replaces the legacy Python uploader; deliberately does NOT execute the benchmark binary — that responsibility stays in the dhall/bash CI layer that pipes the binary's stdout to this tool."
+license = "Apache-2.0"
+
+[[bin]]
+name = "mina-bench-upload"
+path = "src/main.rs"
+
+[lib]
+name = "mina_bench_upload"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4.4", features = ["derive", "env"] }
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+regex = "1.0"
+log = "0.4"
+env_logger = "0.10"
+influxdb2 = { version = "0.5", default-features = false, features = ["rustls"] }
+influxdb2-structmap = "0.2"
+futures = "0.3"
+
+[dev-dependencies]
+tempfile = "3"
+wiremock = "0.6"
+pretty_assertions = "1.4"

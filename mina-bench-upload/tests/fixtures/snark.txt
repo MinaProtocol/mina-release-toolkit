@@ -1,0 +1,8 @@
+Some preamble that should be ignored
+| No.| Proof updates| Non-proof pairs| Non-proof singles| Mempool verification time (sec)| Transaction proving time (sec)|Permutation|
+|--|--|--|--|--|--|--|
+| 1| 0| 1| 1| 0.002070| 12.125372| SSS|
+| 2| 1| 0| 2| 0.102019| 0.263364| SPS|
+| 3| 1| 1| 0| 0.110309| 0.427459| SSP|
+| 4| 2| 0| 1| 0.129152| 0.277442| SPP|
+trailing junk

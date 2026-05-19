@@ -1,0 +1,5 @@
+Proofs updates=0  Signed/None updates=0  Pairs of Signed/None updates=1: Total account updates: 2 Cost: 10.080000
+Proofs updates=0  Signed/None updates=0  Pairs of Signed/None updates=2: Total account updates: 4 Cost: 20.160000
+Proofs updates=0  Signed/None updates=1  Pairs of Signed/None updates=0: Total account updates: 1 Cost: 9.140000
+Proofs updates=0  Signed/None updates=1  Pairs of Signed/None updates=1: Total account updates: 3 Cost: 19.220000
+Proofs updates=1  Signed/None updates=0  Pairs of Signed/None updates=0: Total account updates: 1 Cost: 15.500000
