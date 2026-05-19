@@ -7,7 +7,11 @@
   "package_section": "utils",
   "package_priority": "optional",
   "package_homepage": "https://github.com/MinaProtocol/mina-release-toolkit",
+  "package_installed_size": "",
+  "package_source": "",
   "architecture": "amd64",
+  "githash": "",
+  "buildurl": "",
   "depends": [
     "ca-certificates",
     "fakeroot",
