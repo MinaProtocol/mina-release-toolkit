@@ -1,270 +1,122 @@
-# Mina Protocol Release Toolkit
+# Mina Release Toolkit
 
-A comprehensive monorepo containing all subprojects, tools, and scripts for managing the Mina Protocol release process. This toolkit provides end-to-end automation for building, packaging, publishing, and maintaining Mina Protocol releases across different channels and platforms.
+The tools the Mina Protocol release pipeline uses to build, sign, ship,
+and verify packages. Six self-contained components live side-by-side
+in this repo; this README is a map and pointers — each component's
+own `README.md` is the detailed reference.
 
-## Overview
+## At a glance
 
-The mina-release-toolkit is designed to handle the complete lifecycle of Mina Protocol releases, from building packages to deploying them across various distribution channels. It supports multiple artifacts (mina-daemon, mina-archive, mina-rosetta, mina-logproc), networks (devnet, mainnet), platforms (Debian, Docker), and storage backends (Google Cloud Storage, Hetzner, local filesystem).
+| Component | Language | What it does | Detail |
+| --- | --- | --- | --- |
+| [`deb-toolkit/`](deb-toolkit/) (submodule) | Rust | Build, sign, verify, and transactionally edit `.deb` packages. Includes the `session` subsystem for hardfork-style mutations. | [README](deb-toolkit/README.md) |
+| [`release-manager/`](release-manager/) | Rust | Publish artifacts to Debian repos / Docker registries; promote between channels; verify; archive. | [README](release-manager/README.md) |
+| [`mina-bench-upload/`](mina-bench-upload/) | Rust | Parse benchmark output (7 formats) and upload to InfluxDB with regression checks. | [README](mina-bench-upload/README.md) |
+| [`buildkite-cache-manager/`](buildkite-cache-manager/) | Rust | Read/write/list/prune Buildkite CI cache on Hetzner shared storage. | [README](buildkite-cache-manager/README.md) |
+| [`deb-s3/`](deb-s3/) (submodule) | Ruby | Manage APT repositories on S3 (upload, delete, verify, repair). Forked from `krobertson/deb-s3`. | [README](deb-s3/README.md) |
+| [`dhall-buildkite/`](dhall-buildkite/) (submodule) | Dhall | Type-safe, composable Buildkite pipeline configs. | [README](dhall-buildkite/README.md) |
+| [`debian/`](debian/) | HTML + bash | Static welcome pages for the Debian repositories + a Docker-based test harness. | — |
 
-## Components
+## How the pieces fit
 
-### 1. **deb-toolkit** (Rust Application)
-A Rust CLI for building, signing, and verifying Debian packages.
-
-**Key Features:**
-- **Template-based package generation** (minijinja) with extensive metadata support
-- **GPG signing** via `debsigs` and signature verification via `debsig-verify`
-- **Content verification** that compares a built `.deb` against expected metadata
-- **Flexible configuration system** supporting defaults files and CLI overrides
-- **Multi-platform support** for different Debian codenames (bullseye, focal, noble, ...)
-
-**Architecture:**
-- `src/builder.rs` - CLI-vs-defaults resolution and `fakeroot dpkg-deb` invocation
-- `src/templates.rs` - minijinja templates for control file + debsig policy
-- `src/signer.rs` - `debsigs` wrapper for package signing
-- `src/signature_verifier.rs` - `debsig-verify` orchestration with temp policy dir
-- `src/content_verifier.rs` - `dpkg-deb -I` parser and field comparison
-- `src/viewer.rs` - signing-key-id extraction
-
-**Usage:**
-```bash
-cd deb-toolkit
-cargo build --release
-./target/release/deb-toolkit build --build-dir ./build \
-    --output-dir ./out --package-name mina-daemon --version 1.0.0 \
-    --suite stable --codename focal
+```
+                    ┌──────────────────────────┐
+                    │       dhall-buildkite    │ defines CI pipelines
+                    └─────────────┬────────────┘
+                                  │ triggers
+                                  ▼
+        ┌─────────────────┐  ┌─────────────────┐  ┌──────────────────┐
+        │  buildkite-     │  │   deb-toolkit   │  │  mina-bench-     │
+        │  cache-manager  │◀─│   builds .deb   │  │  upload          │
+        │  caches in/out  │  │   signs, mutates│  │  reports to      │
+        └─────────────────┘  └────────┬────────┘  │  InfluxDB        │
+                                      │           └──────────────────┘
+                                      ▼
+                          ┌──────────────────────┐
+                          │   release-manager    │ promote / publish
+                          └────────┬─────────────┘
+                                   ▼
+                        ┌────────────────────┐
+                        │   APT repo on S3   │ (managed by deb-s3)
+                        └────────────────────┘
 ```
 
-### 2. **deb-s3** (Ruby Gem Submodule)  
-A specialized Ruby utility for managing APT repositories on Amazon S3, forked from the original krobertson/deb-s3 project.
+## Quick start
 
-**Key Features:**
-- **Direct S3 APT repository management** without local file tree maintenance
-- **Package manifest management** with automatic Packages/Release file updates
-- **Multi-architecture support** (amd64, i386, all)
-- **GPG signing integration** for repository authentication
-- **Verification and repair tools** for repository integrity
-
-**Core Operations:**
-- **Upload**: Add .deb packages to S3-hosted APT repositories
-- **Delete**: Remove specific package versions from repositories  
-- **Verify**: Check repository integrity and fix manifest issues
-- **Component/Codename management** for organized package distribution
-
-**Usage:**
 ```bash
-deb-s3 upload --bucket my-bucket --codename stable my-package.deb
-deb-s3 verify --bucket my-bucket --fix-manifests
-```
-
-### 3. **dhall-buildkite** (Dhall Configuration Submodule)
-A foundational Dhall library providing type-safe, composable configurations for Buildkite CI/CD pipelines.
-
-**Key Features:**
-- **Type-safe pipeline configurations** with compile-time validation
-- **Modular command system** supporting Docker, plugins, and custom commands
-- **Monorepo diff filtering** for selective CI execution
-- **Reusable pipeline components** and templates
-- **S3-hosted package distribution** with versioned releases
-
-**Architecture:**
-- `src/Pipeline/Type.dhall` - Core pipeline type definitions and builders
-- `src/Command/` - Buildkite command abstractions (size, retry, dependencies)
-- `src/Lib/` - Utility functions for file selection and command composition
-- `examples/` - Working examples from hello-world to complex monorepo filtering
-
-**Usage:**
-```bash
-cd dhall-buildkite
-make all_checks  # Validate syntax, lint, and format
-make build_package && make release
-```
-
-### 4. **release-manager** (Rust Application)
-A high-performance Rust implementation providing comprehensive release management functionality for build artifacts across multiple platforms and storage backends.
-
-**Key Features:**
-- **Multi-platform publishing** to Debian repositories and Docker registries
-- **Channel promotion** (unstable → alpha → beta → stable)
-- **Artifact verification** across all target platforms
-- **Repository repair tools** for Debian manifest fixes
-- **Long-term archival** to multiple storage backends
-- **Cache management** with pull/persist operations
-
-**Supported Configurations:**
-- **Artifacts**: mina-daemon, mina-archive, mina-rosetta, mina-logproc
-- **Networks**: devnet, mainnet  
-- **Platforms**: Debian (bullseye, focal), Docker (GCR, docker.io)
-- **Channels**: unstable, alpha, beta, stable
-- **Storage**: Google Cloud Storage, Hetzner, local filesystem
-
-**Command Structure:**
-```bash
-# Publish artifacts from cache to repositories
-release-manager publish --buildkite-build-id 12345 --source-version 1.0.0 --target-version 1.0.1 --channel stable
-
-# Promote between channels  
-release-manager promote --source-version 1.0.0 --target-version 1.0.1 --source-channel alpha --target-channel beta
-
-# Verify published artifacts
-release-manager verify --version 1.0.1 --channel stable --artifacts mina-daemon,mina-archive
-
-# Repair repository manifests
-release-manager fix --codenames bullseye,focal --channel stable
-
-# Archive to long-term storage
-release-manager persist --backend hetzner --buildkite-build-id 12345 --target /archive/2024
-```
-
-### 5. **buildkite-cache-manager.sh** (Bash Script)
-A lightweight cache management utility for Buildkite CI environments, providing efficient file transfer to/from shared storage.
-
-**Key Features:**
-- **Buildkite integration** with automatic build ID detection
-- **Bidirectional operations** (read from cache, write to cache)
-- **Wildcard support** for batch file operations
-- **Override protection** with configurable file conflict handling
-- **Flexible root path management** for organized cache structure
-
-**Operations:**
-- **Read**: Copy artifacts from cache to local workspace
-- **Write**: Upload build artifacts to shared cache
-- **Directory management** with automatic creation
-- **Error handling** with detailed failure reporting
-
-**Usage:**
-```bash
-# Write artifacts to cache
-./buildkite-cache-manager.sh write mina-daemon*.deb debians/
-
-# Read artifacts from cache  
-./buildkite-cache-manager.sh read debians/mina-devnet*.deb /workdir
-
-# Override existing files
-./buildkite-cache-manager.sh read --override debians/* /workdir
-```
-
-### 6. **debian/repositories** (Repository Testing)
-Testing infrastructure and HTML repository pages for Mina Protocol's Debian package repositories.
-
-**Components:**
-- **Repository pages**: stable, nightly, unstable package listings
-- **Automated testing**: Docker-based validation of installation instructions
-- **Multi-distribution support**: Testing across different Debian/Ubuntu versions
-
-## Workflow Integration
-
-The toolkit components work together in a coordinated release pipeline:
-
-1. **dhall-buildkite** defines CI/CD pipelines that trigger builds
-2. **buildkite-cache-manager.sh** handles artifact caching during builds  
-3. **deb-toolkit** creates Debian packages from build outputs
-4. **release-manager** publishes packages to repositories and registries
-5. **deb-s3** manages APT repository manifests on S3
-6. **debian/repositories** validates published packages
-
-## Development Environment
-
-### Prerequisites
-- **Rust** (1.70+) for release-manager, deb-toolkit, buildkite-cache-manager, rust-buildkite
-- **Ruby** (2.7+) for deb-s3
-- **Dhall** (1.40+) for dhall-buildkite
-- **Docker** for containerized builds and testing
-- **gsutil** for Google Cloud Storage operations
-
-### Quick Start
-```bash
-# Clone with submodules
+# Clone with submodules (deb-toolkit, deb-s3, dhall-buildkite).
 git clone --recurse-submodules https://github.com/MinaProtocol/mina-release-toolkit.git
 cd mina-release-toolkit
 
-# Build all components
-cd deb-toolkit && cargo build --release
-cd ../release-manager && cargo build --release
-cd ../dhall-buildkite && make all_checks
-cd ../deb-s3 && bundle install
+# Or update submodules in an existing clone.
+git submodule update --init --recursive
 
-# Run tests
-cd deb-toolkit && cargo test
-cd ../release-manager && cargo test
-cd ../dhall-buildkite && make check_examples
+# Build the three local Rust tools.
+(cd release-manager       && cargo build --release)
+(cd mina-bench-upload     && cargo build --release)
+(cd buildkite-cache-manager && cargo build --release)
+
+# deb-toolkit ships as a submodule; build it in-place.
+(cd deb-toolkit && cargo build --release)
+
+# Run all the Rust test suites.
+for crate in release-manager mina-bench-upload buildkite-cache-manager deb-toolkit; do
+    (cd "$crate" && cargo test) || break
+done
 ```
 
-## Storage Backends
+## Prerequisites
 
-### Google Cloud Storage (gs)
-- Primary backend for CI/CD cache and artifact storage
-- Requires authenticated gsutil installation
-- Used for build artifact caching and distribution
+| Need | For |
+| --- | --- |
+| Rust 1.70+ | `deb-toolkit`, `release-manager`, `mina-bench-upload`, `buildkite-cache-manager` |
+| Ruby 2.7+ | `deb-s3` |
+| Dhall 1.40+ | `dhall-buildkite` |
+| `dpkg-deb`, `fakeroot`, `debsigs`, `debsig-verify`, `gpg` | `deb-toolkit` integration tests |
+| Docker | repository welcome-page tests under `debian/` |
+| `gsutil`, AWS CLI | `release-manager` GCS / S3 operations |
 
-### Hetzner Storage  
-- Secondary backend for long-term archival
-- SSH-based file transfer with key authentication
-- Configurable via environment variables (HETZNER_USER, HETZNER_HOST, HETZNER_KEY)
+## CI
 
-### Local Filesystem
-- Development and testing backend
-- Uses `/var/storagebox/` as default mount point
-- Useful for local development and debugging
+Per-component GitHub Actions workflows live in `.github/workflows/`.
+Each is path-filtered to its own directory:
 
-## Deployment
+| Workflow | Triggers on changes to |
+| --- | --- |
+| `release-manager.yml` | `release-manager/**` |
+| `mina-bench-upload.yml` | `mina-bench-upload/**` |
+| `debian-repositories.yml`, `test-debian-repositories.yml`, `test-html-pages.yml` | `debian/**` |
 
-### Debian Repository Welcome Pages
+The `deb-toolkit` submodule has its own CI in its own repo.
 
-The toolkit includes automated deployment for Debian repository welcome pages located in `debian/repositories/`. These HTML pages provide installation instructions and package information for the three Mina channels:
+## Storage backends
 
-**Available Pages:**
-- `stable_packages_page.html` - Stable releases
-- `nightly_packages_page.html` - Nightly builds
-- `unstable_packages_page.html` - Development builds
+Several components touch shared storage. The conventions are:
 
-**Deployment Commands:**
-```bash
-cd debian/repositories
+- **Google Cloud Storage** (`gs://...`) — CI cache and primary artifact
+  staging. Requires authenticated `gsutil`.
+- **Hetzner storage box** (SSH+SFTP) — long-term archival and CI cache
+  fallback. Configured via `HETZNER_USER`, `HETZNER_HOST`, `HETZNER_KEY`.
+- **Local filesystem** (`/var/storagebox/` by default) — local dev /
+  testing backend.
 
-# Test repository pages before deployment
-make test                    # Test all pages
-make test-stable            # Test stable page only
-make test-nightly           # Test nightly page only
-make test-unstable          # Test unstable page only
-
-# Deploy to AWS S3 + CloudFront
-make deploy-stable          # Deploy stable page
-make deploy-nightly         # Deploy nightly page
-make deploy-unstable        # Deploy unstable page
-make all                    # Deploy all pages
-
-# Test and deploy together
-make test-and-deploy        # Test and deploy all
-make test-and-deploy-stable # Test and deploy stable only
-
-# Dry run (show what would be deployed)
-make dry-run               # Dry run for all pages
-make dry-run-stable        # Dry run for stable page
-
-# Validate prerequisites
-make validate              # Check HTML files exist
-make check-aws            # Check AWS CLI availability
-```
-
-**AWS Configuration:**
-- Requires AWS CLI with appropriate permissions for S3 and CloudFront
-- Uses CloudFront distributions for CDN delivery
-- Automatic cache invalidation after deployment
-- Default AWS profile and us-west-2 region
-
-**Testing Framework:**
-The `test_from_html.sh` script automatically extracts installation commands from HTML files and validates them in Docker containers across multiple Debian/Ubuntu distributions.
+`buildkite-cache-manager/README.md` documents the cache layout.
 
 ## Contributing
 
-This monorepo follows standard Git submodule practices. When making changes:
+Each component is independently testable. For changes inside a
+submodule (`deb-toolkit`, `deb-s3`, `dhall-buildkite`):
 
-1. Work in individual submodule directories for component-specific changes
-2. Update the main repository to reference new submodule commits
-3. Test the entire release pipeline with integration tests
-4. Follow each component's specific coding standards (Rust, Ruby, Dhall)
+1. Land the change in the submodule's own repo via a PR there.
+2. Bump the submodule pointer in this repo:
+   `cd <submodule> && git checkout <new SHA> && cd .. && git add <submodule>`.
+3. Open a PR here with the pointer bump.
+
+For in-tree crates (`release-manager`, `mina-bench-upload`,
+`buildkite-cache-manager`), normal PR workflow applies — the per-crate
+GitHub Actions runs `cargo fmt`, `cargo clippy`, and `cargo test` on
+every push.
 
 ## License
 
-This project follows the same license as the Mina Protocol project (Apache 2.0).
+Apache-2.0. See [LICENSE](LICENSE).
