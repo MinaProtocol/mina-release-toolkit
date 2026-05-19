@@ -1,5 +1,15 @@
 # Mina Release Toolkit
 
+[![release-manager CI](https://github.com/MinaProtocol/mina-release-toolkit/actions/workflows/release-manager.yml/badge.svg?branch=main)](https://github.com/MinaProtocol/mina-release-toolkit/actions/workflows/release-manager.yml)
+[![mina-bench-upload CI](https://github.com/MinaProtocol/mina-release-toolkit/actions/workflows/mina-bench-upload.yml/badge.svg?branch=main)](https://github.com/MinaProtocol/mina-release-toolkit/actions/workflows/mina-bench-upload.yml)
+[![Coverage](https://github.com/MinaProtocol/mina-release-toolkit/actions/workflows/coverage.yml/badge.svg?branch=main)](https://github.com/MinaProtocol/mina-release-toolkit/actions/workflows/coverage.yml)
+[![codecov](https://codecov.io/gh/MinaProtocol/mina-release-toolkit/branch/main/graph/badge.svg)](https://codecov.io/gh/MinaProtocol/mina-release-toolkit)
+
+Per-crate coverage:
+[![release-manager](https://codecov.io/gh/MinaProtocol/mina-release-toolkit/branch/main/graph/badge.svg?flag=release-manager)](https://codecov.io/gh/MinaProtocol/mina-release-toolkit?flags%5B0%5D=release-manager)
+[![mina-bench-upload](https://codecov.io/gh/MinaProtocol/mina-release-toolkit/branch/main/graph/badge.svg?flag=mina-bench-upload)](https://codecov.io/gh/MinaProtocol/mina-release-toolkit?flags%5B0%5D=mina-bench-upload)
+[![buildkite-cache-manager](https://codecov.io/gh/MinaProtocol/mina-release-toolkit/branch/main/graph/badge.svg?flag=buildkite-cache-manager)](https://codecov.io/gh/MinaProtocol/mina-release-toolkit?flags%5B0%5D=buildkite-cache-manager)
+
 The tools the Mina Protocol release pipeline uses to build, sign, ship,
 and verify packages. Six self-contained components live side-by-side
 in this repo; this README is a map and pointers — each component's
