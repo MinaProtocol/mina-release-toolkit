@@ -1,0 +1,4 @@
+Data of type Zkapp_command.t                                uses  52268 heap words =   418144 bytes
+Data of type Pickles.Side_loaded.Proof.t                    uses   3467 heap words =    27736 bytes
+Data of type Mina_base.Side_loaded_verification_key.t       uses    897 heap words =     7176 bytes
+Data of type Dummy Pickles.Side_loaded.Proof.t              uses   2672 heap words =    21376 bytes

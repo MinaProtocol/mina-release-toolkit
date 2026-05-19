@@ -1,0 +1,5 @@
+[
+  {"operation":"Zkapp_account_update.add","avg_time_ms":4.994700819672131},
+  {"operation":"Zkapp_account_update_body.add","avg_time_ms":3.1188038147138974},
+  {"operation":"Block.add","avg_time_ms":12.345}
+]

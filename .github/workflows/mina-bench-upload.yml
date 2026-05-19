@@ -1,0 +1,106 @@
+name: mina-bench-upload CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'mina-bench-upload/**'
+      - '.github/workflows/mina-bench-upload.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'mina-bench-upload/**'
+      - '.github/workflows/mina-bench-upload.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+# Cancel superseded runs on the same PR / branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        rust: [stable]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ matrix.rust }}
+        components: rustfmt, clippy
+
+    - name: Configure Rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: mina-bench-upload
+        key: ${{ matrix.os }}-${{ matrix.rust }}
+
+    # No external system deps required:
+    #   - `influxdb2` is built with the `rustls` feature so OpenSSL is
+    #     not needed at link time.
+    #   - The integration tests under `tests/cli_smoke.rs` use
+    #     `--dry-run` and never hit the network.
+
+    - name: Check formatting
+      run: |
+        cd mina-bench-upload
+        cargo fmt --all -- --check
+
+    - name: Run Clippy
+      run: |
+        cd mina-bench-upload
+        cargo clippy --no-deps --all-targets -- -D warnings
+
+    - name: Run tests
+      run: |
+        cd mina-bench-upload
+        cargo test --verbose
+
+  build:
+    name: Build Binary
+    runs-on: ubuntu-latest
+    needs: [test]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Configure Rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: mina-bench-upload
+
+    - name: Build release binary
+      run: |
+        cd mina-bench-upload
+        cargo build --release
+
+    - name: Smoke-test release binary
+      # Sanity-check the compiled release artifact still does the
+      # parser dance for every format we ship support for. `--dry-run`
+      # so this doesn't need any InfluxDB env vars.
+      run: |
+        cd mina-bench-upload
+        BIN=./target/release/mina-bench-upload
+        $BIN --format mina-base     --input tests/fixtures/janestreet.txt   --branch develop --upload --dry-run
+        $BIN --format ledger-export --input tests/fixtures/janestreet.txt   --branch develop --upload --dry-run
+        $BIN --format snark         --input tests/fixtures/snark.txt        --branch develop --upload --dry-run
+        $BIN --format zkapp         --input tests/fixtures/zkapp.txt        --branch develop --upload --dry-run
+        $BIN --format archive       --input tests/fixtures/archive.json     --branch develop --upload --dry-run
+        $BIN --format heap          --input tests/fixtures/heap.txt         --branch develop --upload --dry-run
+        $BIN --format ledger-apply  --input tests/fixtures/ledger_apply.json --branch develop --upload --dry-run
