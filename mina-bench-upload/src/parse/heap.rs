@@ -12,7 +12,7 @@
 //! `DummyPickles.Side_loaded.Proof.t`. We replicate that mangling so
 //! the measurement names match what's already in the bucket.
 
-use super::{BenchmarkRecord, FieldValue, Parser, TAG_CATEGORY, TAG_GITBRANCH};
+use super::{BenchmarkRecord, FieldValue, Parser};
 use anyhow::{anyhow, Context, Result};
 use regex::Regex;
 
@@ -21,13 +21,15 @@ pub const F_BYTES: &str = "bytes";
 
 pub struct HeapParser;
 
-impl Parser for HeapParser {
-    fn category(&self) -> &'static str {
-        // Python uses underscore here (`heap_usage`), not the
-        // CLI-friendly `heap-usage`. Match it for compat.
-        "heap_usage"
-    }
+/// Category tag value for heap-usage records.
+///
+/// Note the underscore: the Python tool wrote `heap_usage` (not
+/// `heap-usage`) and we preserve that here so the regression query
+/// still resolves against historical samples in the bucket. All the
+/// other categories use kebab-case.
+const HEAP_CATEGORY: &str = "heap_usage";
 
+impl Parser for HeapParser {
     fn parse(&self, input: &str, branch: &str) -> Result<Vec<BenchmarkRecord>> {
         // After whitespace-stripping, the line shape is exactly:
         //     Dataoftype<NAME>uses<WORDS>heapwords=<BYTES>bytes
@@ -54,9 +56,7 @@ impl Parser for HeapParser {
                 .with_context(|| format!("heap: bad bytes on line {}", line))?;
 
             out.push(
-                BenchmarkRecord::new(name)
-                    .with_tag(TAG_CATEGORY, "heap_usage")
-                    .with_tag(TAG_GITBRANCH, branch)
+                BenchmarkRecord::categorized(name, HEAP_CATEGORY, branch)
                     .with_field(F_HEAP_WORDS, FieldValue::Float(words))
                     .with_field(F_BYTES, FieldValue::Float(bytes)),
             );
@@ -68,6 +68,7 @@ impl Parser for HeapParser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parse::TAG_CATEGORY;
 
     const FIXTURE: &str = include_str!("../../tests/fixtures/heap.txt");
 

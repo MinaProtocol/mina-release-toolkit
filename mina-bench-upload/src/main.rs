@@ -10,7 +10,7 @@ use mina_bench_upload::parse::{
     self, archive::ArchiveParser, heap::HeapParser, janestreet::JaneStreetParser,
     ledger_apply::LedgerApplyParser, snark::SnarkParser, zkapp::ZkappParser, Parser,
 };
-use mina_bench_upload::regression::{self, CheckOutcome, Thresholds};
+use mina_bench_upload::regression::{self, Thresholds};
 
 /// Exit codes — stable contract for callers in dhall/bash.
 const EXIT_OK: u8 = 0;
@@ -98,23 +98,52 @@ fn main() -> ExitCode {
 }
 
 async fn run(cli: Cli) -> u8 {
-    // ---- read input ----
-    let raw = match read_input(&cli.input) {
-        Ok(s) => s,
-        Err(e) => {
-            log::error!("Failed to read input: {:#}", e);
-            return EXIT_PARSE_ERROR;
-        }
+    let records = match read_and_parse(&cli) {
+        Ok(r) => r,
+        Err(code) => return code,
     };
 
-    // ---- parse ----
-    let records = match parse_input(cli.format, &raw, &cli.branch) {
-        Ok(r) => r,
-        Err(e) => {
-            log::error!("Parse error: {:#}", e);
-            return EXIT_PARSE_ERROR;
-        }
+    let cfg = match load_influx_config(&cli) {
+        Ok(c) => c,
+        Err(code) => return code,
     };
+
+    let thresholds = Thresholds {
+        yellow: cli.yellow,
+        red: cli.red,
+    };
+
+    let saw_red = if cli.check_regression {
+        run_regression_phase(&cli, cfg.as_ref(), &records, thresholds).await
+    } else {
+        false
+    };
+
+    if cli.upload {
+        if let Err(code) = run_upload_phase(&cli, cfg.as_ref(), &records).await {
+            return code;
+        }
+    }
+
+    if saw_red {
+        EXIT_RED_REGRESSION
+    } else {
+        EXIT_OK
+    }
+}
+
+/// Read stdin/file and parse into records. On any failure, log a
+/// diagnostic and return the matching exit code so the caller can
+/// short-circuit.
+fn read_and_parse(cli: &Cli) -> Result<Vec<parse::BenchmarkRecord>, u8> {
+    let raw = read_input(&cli.input).map_err(|e| {
+        log::error!("Failed to read input: {:#}", e);
+        EXIT_PARSE_ERROR
+    })?;
+    let records = parse_input(cli.format, &raw, &cli.branch).map_err(|e| {
+        log::error!("Parse error: {:#}", e);
+        EXIT_PARSE_ERROR
+    })?;
     log::info!("Parsed {} record(s)", records.len());
     for r in &records {
         log::debug!(
@@ -124,63 +153,73 @@ async fn run(cli: Cli) -> u8 {
             r.fields
         );
     }
+    Ok(records)
+}
 
-    // ---- env-var config (only needed if we'll talk to InfluxDB) ----
-    let needs_influx = cli.upload || cli.check_regression;
-    let cfg = if needs_influx && !cli.dry_run {
-        match InfluxConfig::from_env() {
-            Ok(c) => Some(c),
-            Err(e) => {
-                log::error!("InfluxDB configuration error: {:#}", e);
-                return EXIT_CONFIG_ERROR;
-            }
-        }
-    } else {
-        None
-    };
-
-    // ---- regression check ----
-    let thresholds = Thresholds {
-        yellow: cli.yellow,
-        red: cli.red,
-    };
-    let mut saw_red = false;
-    if cli.check_regression {
-        if cli.dry_run {
-            log::info!(
-                "[dry-run] would check regression: {} record(s) against last {} samples (yellow=+{:.0}%, red=+{:.0}%)",
-                records.len(),
-                cli.min_samples,
-                thresholds.yellow * 100.0,
-                thresholds.red * 100.0
-            );
-        } else if let Some(cfg) = &cfg {
-            saw_red = run_regression_checks(cfg, &records, cli.min_samples, thresholds).await;
-        }
+/// Load InfluxDB env-var config when the chosen flags require it.
+/// Returns `Ok(None)` when no upload / regression check is requested
+/// (or when `--dry-run` short-circuits the network); returns an exit
+/// code on validation failure.
+fn load_influx_config(cli: &Cli) -> Result<Option<InfluxConfig>, u8> {
+    let needs_influx = (cli.upload || cli.check_regression) && !cli.dry_run;
+    if !needs_influx {
+        return Ok(None);
     }
+    InfluxConfig::from_env().map(Some).map_err(|e| {
+        log::error!("InfluxDB configuration error: {:#}", e);
+        EXIT_CONFIG_ERROR
+    })
+}
 
-    // ---- upload ----
-    if cli.upload {
-        if cli.dry_run {
-            log::info!(
-                "[dry-run] would upload {} record(s) to InfluxDB",
-                records.len()
-            );
-        } else if let Some(cfg) = &cfg {
-            match influx::upload(&records, cfg).await {
-                Ok(n) => log::info!("Uploaded {} record(s) to {}/{}", n, cfg.host, cfg.bucket),
-                Err(e) => {
-                    log::error!("Upload failed: {:#}", e);
-                    return EXIT_UPLOAD_ERROR;
-                }
-            }
-        }
+/// Run the regression check (or log a dry-run summary). Returns
+/// whether any field tripped the red threshold.
+async fn run_regression_phase(
+    cli: &Cli,
+    cfg: Option<&InfluxConfig>,
+    records: &[parse::BenchmarkRecord],
+    thresholds: Thresholds,
+) -> bool {
+    if cli.dry_run {
+        log::info!(
+            "[dry-run] would check regression: {} record(s) against last {} samples (yellow=+{:.0}%, red=+{:.0}%)",
+            records.len(),
+            cli.min_samples,
+            thresholds.yellow * 100.0,
+            thresholds.red * 100.0
+        );
+        return false;
     }
+    let Some(cfg) = cfg else {
+        return false;
+    };
+    run_regression_checks(cfg, records, cli.min_samples, thresholds).await
+}
 
-    if saw_red {
-        EXIT_RED_REGRESSION
-    } else {
-        EXIT_OK
+/// Push records to InfluxDB (or log a dry-run summary).
+async fn run_upload_phase(
+    cli: &Cli,
+    cfg: Option<&InfluxConfig>,
+    records: &[parse::BenchmarkRecord],
+) -> Result<(), u8> {
+    if cli.dry_run {
+        log::info!(
+            "[dry-run] would upload {} record(s) to InfluxDB",
+            records.len()
+        );
+        return Ok(());
+    }
+    let Some(cfg) = cfg else {
+        return Ok(());
+    };
+    match influx::upload(records, cfg).await {
+        Ok(n) => {
+            log::info!("Uploaded {} record(s) to {}/{}", n, cfg.host, cfg.bucket);
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("Upload failed: {:#}", e);
+            Err(EXIT_UPLOAD_ERROR)
+        }
     }
 }
 
@@ -232,7 +271,8 @@ async fn run_regression_checks(
             continue;
         };
         for (field_name, field_value) in &record.fields {
-            let outcome = match regression::check(
+            let label = format!("{}.{}", record.measurement, field_name);
+            match regression::check(
                 cfg,
                 branch,
                 &record.measurement,
@@ -243,66 +283,15 @@ async fn run_regression_checks(
             )
             .await
             {
-                Ok(o) => o,
+                Ok(outcome) => {
+                    outcome.log(&label);
+                    saw_red |= outcome.is_red();
+                }
                 Err(e) => {
                     log::warn!(
-                        "regression query for {}.{} failed: {:#} — skipping check, build will not be failed by this",
-                        record.measurement,
-                        field_name,
+                        "regression query for {} failed: {:#} — skipping check, build will not be failed by this",
+                        label,
                         e
-                    );
-                    continue;
-                }
-            };
-            match outcome {
-                CheckOutcome::Ok { current, mean } => {
-                    log::info!(
-                        "  ok    {}.{}: current={} mean={}",
-                        record.measurement,
-                        field_name,
-                        current,
-                        mean
-                    );
-                }
-                CheckOutcome::Yellow {
-                    current,
-                    mean,
-                    ceiling,
-                } => {
-                    log::warn!(
-                        "  YELLOW {}.{}: current={} > yellow_ceiling={} (mean={})",
-                        record.measurement,
-                        field_name,
-                        current,
-                        ceiling,
-                        mean
-                    );
-                }
-                CheckOutcome::Red {
-                    current,
-                    mean,
-                    ceiling,
-                } => {
-                    log::error!(
-                        "  RED   {}.{}: current={} > red_ceiling={} (mean={})",
-                        record.measurement,
-                        field_name,
-                        current,
-                        ceiling,
-                        mean
-                    );
-                    saw_red = true;
-                }
-                CheckOutcome::NotEnoughHistory {
-                    samples_found,
-                    required,
-                } => {
-                    log::info!(
-                        "  skip  {}.{}: {} historical samples (need {})",
-                        record.measurement,
-                        field_name,
-                        samples_found,
-                        required
                     );
                 }
             }

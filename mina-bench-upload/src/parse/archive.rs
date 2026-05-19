@@ -4,7 +4,7 @@
 //! The operation name becomes the InfluxDB measurement; `avg_time_ms`
 //! lands in the `time` field (matching the Python tool's field name).
 
-use super::{BenchmarkRecord, FieldValue, Parser, TAG_CATEGORY, TAG_GITBRANCH};
+use super::{BenchmarkRecord, FieldValue, Parser};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
@@ -19,10 +19,6 @@ struct ArchiveRow {
 }
 
 impl Parser for ArchiveParser {
-    fn category(&self) -> &'static str {
-        "archive"
-    }
-
     fn parse(&self, input: &str, branch: &str) -> Result<Vec<BenchmarkRecord>> {
         let rows: Vec<ArchiveRow> =
             serde_json::from_str(input).context("archive: not a valid JSON array")?;
@@ -30,9 +26,7 @@ impl Parser for ArchiveParser {
         Ok(rows
             .into_iter()
             .map(|r| {
-                BenchmarkRecord::new(r.operation)
-                    .with_tag(TAG_CATEGORY, "archive")
-                    .with_tag(TAG_GITBRANCH, branch)
+                BenchmarkRecord::categorized(r.operation, "archive", branch)
                     .with_field(F_TIME, FieldValue::Float(r.avg_time_ms))
             })
             .collect())

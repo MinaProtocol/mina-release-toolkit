@@ -77,18 +77,16 @@ pub fn evaluate(
     min_samples: usize,
     thresholds: Thresholds,
 ) -> CheckOutcome {
-    let Some(mean) = mean else {
-        return CheckOutcome::NotEnoughHistory {
-            samples_found: 0,
-            required: min_samples,
-        };
-    };
-    if samples_found < min_samples {
+    // Skip when we don't have enough history. Both "zero samples"
+    // (mean is None) and "fewer than min_samples" land here — the
+    // caller's `samples_found` is already 0 in the first case, so a
+    // single branch covers both.
+    let Some(mean) = mean.filter(|_| samples_found >= min_samples) else {
         return CheckOutcome::NotEnoughHistory {
             samples_found,
             required: min_samples,
         };
-    }
+    };
 
     let red_ceiling = mean * (1.0 + thresholds.red);
     let yellow_ceiling = mean * (1.0 + thresholds.yellow);
@@ -107,6 +105,64 @@ pub fn evaluate(
         }
     } else {
         CheckOutcome::Ok { current, mean }
+    }
+}
+
+impl CheckOutcome {
+    /// `true` only for [`CheckOutcome::Red`]. Useful for short-circuit
+    /// "any red?" tallies without `match`ing on every call site.
+    pub fn is_red(&self) -> bool {
+        matches!(self, CheckOutcome::Red { .. })
+    }
+
+    /// Emit a one-line log entry at the severity appropriate to this
+    /// outcome. `label` identifies the metric being reported (typically
+    /// `"<measurement>.<field>"`). Keeps the per-variant rendering in
+    /// one place so callers don't grow a four-arm `match` every time
+    /// they need to surface a check result.
+    pub fn log(&self, label: &str) {
+        match self {
+            CheckOutcome::Ok { current, mean } => {
+                log::info!("  ok    {}: current={} mean={}", label, current, mean);
+            }
+            CheckOutcome::Yellow {
+                current,
+                mean,
+                ceiling,
+            } => {
+                log::warn!(
+                    "  YELLOW {}: current={} > yellow_ceiling={} (mean={})",
+                    label,
+                    current,
+                    ceiling,
+                    mean
+                );
+            }
+            CheckOutcome::Red {
+                current,
+                mean,
+                ceiling,
+            } => {
+                log::error!(
+                    "  RED   {}: current={} > red_ceiling={} (mean={})",
+                    label,
+                    current,
+                    ceiling,
+                    mean
+                );
+            }
+            CheckOutcome::NotEnoughHistory {
+                samples_found,
+                required,
+            } => {
+                log::info!(
+                    "  skip  {}: {} historical samples (need {})",
+                    label,
+                    samples_found,
+                    required
+                );
+            }
+        }
     }
 }
 

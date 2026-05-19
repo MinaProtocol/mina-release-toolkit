@@ -20,7 +20,7 @@
 //!   * Cycls/Run: `45.6kc` → `45.6`. `10000.0c` → `10000.0`.
 //!   * mWd/Run, mjWd/Run, Prom/Run: strip trailing `w`.
 
-use super::{BenchmarkRecord, FieldValue, Parser, TAG_CATEGORY, TAG_GITBRANCH};
+use super::{BenchmarkRecord, FieldValue, Parser};
 use anyhow::{anyhow, Context, Result};
 use regex::Regex;
 
@@ -52,10 +52,6 @@ impl JaneStreetParser {
 }
 
 impl Parser for JaneStreetParser {
-    fn category(&self) -> &'static str {
-        self.category
-    }
-
     fn parse(&self, input: &str, branch: &str) -> Result<Vec<BenchmarkRecord>> {
         let mut out = Vec::new();
         let bracket_re = Regex::new(r"\[.*?\]").unwrap();
@@ -103,9 +99,7 @@ impl Parser for JaneStreetParser {
                 parse_words(cells[5]).with_context(|| format!("parsing Prom/Run on {}", line))?;
 
             out.push(
-                BenchmarkRecord::new(name)
-                    .with_tag(TAG_CATEGORY, self.category)
-                    .with_tag(TAG_GITBRANCH, branch)
+                BenchmarkRecord::categorized(name, self.category, branch)
                     .with_field(F_TIME_PER_RUN, FieldValue::Float(time_us))
                     .with_field(F_CYCLES_PER_RUN, FieldValue::Float(cycles_kc))
                     .with_field(F_MINOR_WORDS_PER_RUN, FieldValue::Float(minor_w))
@@ -163,6 +157,7 @@ fn parse_words(cell: &str) -> Result<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parse::{TAG_CATEGORY, TAG_GITBRANCH};
 
     const FIXTURE: &str = include_str!("../../tests/fixtures/janestreet.txt");
 

@@ -42,6 +42,17 @@ impl BenchmarkRecord {
         }
     }
 
+    /// Construct a record pre-populated with the two tags every parser
+    /// has to set: `category` (the benchmark family) and `gitbranch`
+    /// (the source git branch). Both are required by the regression
+    /// query's Flux filter, so building them in saves seven copies of
+    /// the same two-tag boilerplate across the parser modules.
+    pub fn categorized(measurement: impl Into<String>, category: &str, branch: &str) -> Self {
+        Self::new(measurement)
+            .with_tag(TAG_CATEGORY, category)
+            .with_tag(TAG_GITBRANCH, branch)
+    }
+
     pub fn with_tag(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.tags.insert(key.into(), value.into());
         self
@@ -82,11 +93,12 @@ impl From<i64> for FieldValue {
 
 /// A benchmark-output parser. Implementations are stateless and
 /// project `&str` of raw benchmark stdout into a list of records.
+///
+/// The trait deliberately has just one method. Each parser embeds
+/// its own `category` tag value when constructing records (see
+/// [`BenchmarkRecord::categorized`]); exposing it as a separate
+/// trait method would split that knowledge across two places.
 pub trait Parser {
-    /// Human-readable name (e.g. `"mina-base"`). Used as the
-    /// `category` tag value on every record this parser emits.
-    fn category(&self) -> &'static str;
-
     /// Parse `input` into records. `branch` is attached as the
     /// `gitbranch` tag on every record. Returns an empty `Vec` if no
     /// rows could be extracted (caller can decide whether that's an

@@ -10,7 +10,7 @@
 //! same composite the Python tool uses, kept verbatim to preserve
 //! historical InfluxDB measurement names).
 
-use super::{BenchmarkRecord, FieldValue, Parser, TAG_CATEGORY, TAG_GITBRANCH};
+use super::{BenchmarkRecord, FieldValue, Parser};
 use anyhow::Result;
 use regex::Regex;
 
@@ -23,10 +23,6 @@ pub const F_COST: &str = "cost";
 pub struct ZkappParser;
 
 impl Parser for ZkappParser {
-    fn category(&self) -> &'static str {
-        "zkapp"
-    }
-
     fn parse(&self, input: &str, branch: &str) -> Result<Vec<BenchmarkRecord>> {
         let re = Regex::new(
             r"Proofs updates=(?P<p>\d+)  Signed/None updates=(?P<s>\d+)  Pairs of Signed/None updates=(?P<ps>\d+): Total account updates: (?P<ta>\d+) Cost: (?P<cost>[0-9]*\.?[0-9]+)",
@@ -46,9 +42,7 @@ impl Parser for ZkappParser {
             let name = format!("P{}S{}PS{}TA{}", p, s, ps, ta);
 
             out.push(
-                BenchmarkRecord::new(name)
-                    .with_tag(TAG_CATEGORY, "zkapp")
-                    .with_tag(TAG_GITBRANCH, branch)
+                BenchmarkRecord::categorized(name, "zkapp", branch)
                     .with_field(F_PROOFS_UPDATES, FieldValue::Int(p))
                     .with_field(F_SIGNED_UPDATES, FieldValue::Int(s))
                     .with_field(F_PAIRS_OF_SIGNED, FieldValue::Int(ps))

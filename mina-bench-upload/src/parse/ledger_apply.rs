@@ -14,7 +14,7 @@
 //! `"ledger-apply"` — there's only one row per invocation. Fields are
 //! `time` and `preps mean`, matching the Python tool's column names.
 
-use super::{BenchmarkRecord, FieldValue, Parser, TAG_CATEGORY, TAG_GITBRANCH};
+use super::{BenchmarkRecord, FieldValue, Parser};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
@@ -31,10 +31,6 @@ struct Raw {
 }
 
 impl Parser for LedgerApplyParser {
-    fn category(&self) -> &'static str {
-        "ledger-apply"
-    }
-
     fn parse(&self, input: &str, branch: &str) -> Result<Vec<BenchmarkRecord>> {
         let raw: Raw =
             serde_json::from_str(input).context("ledger-apply: not a valid JSON object")?;
@@ -51,11 +47,13 @@ impl Parser for LedgerApplyParser {
             )
         })?;
 
-        Ok(vec![BenchmarkRecord::new(MEASUREMENT)
-            .with_tag(TAG_CATEGORY, "ledger-apply")
-            .with_tag(TAG_GITBRANCH, branch)
-            .with_field(F_TIME, FieldValue::Float(final_time))
-            .with_field(F_PREPS_MEAN, FieldValue::Float(preps_mean))])
+        Ok(vec![BenchmarkRecord::categorized(
+            MEASUREMENT,
+            "ledger-apply",
+            branch,
+        )
+        .with_field(F_TIME, FieldValue::Float(final_time))
+        .with_field(F_PREPS_MEAN, FieldValue::Float(preps_mean))])
     }
 }
 

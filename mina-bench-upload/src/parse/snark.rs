@@ -11,7 +11,7 @@
 //! all-letters cell, e.g. `SSS`). The five numeric columns become
 //! fields. Row-number column (`No.`) is discarded.
 
-use super::{BenchmarkRecord, FieldValue, Parser, TAG_CATEGORY, TAG_GITBRANCH};
+use super::{BenchmarkRecord, FieldValue, Parser};
 use anyhow::{anyhow, Context, Result};
 
 pub const F_PROOFS_UPDATES: &str = "proofs updates";
@@ -23,10 +23,6 @@ pub const F_PROVING_TIME: &str = "value";
 pub struct SnarkParser;
 
 impl Parser for SnarkParser {
-    fn category(&self) -> &'static str {
-        "snark"
-    }
-
     fn parse(&self, input: &str, branch: &str) -> Result<Vec<BenchmarkRecord>> {
         let mut out = Vec::new();
 
@@ -80,9 +76,7 @@ impl Parser for SnarkParser {
             }
 
             out.push(
-                BenchmarkRecord::new(name)
-                    .with_tag(TAG_CATEGORY, "snark")
-                    .with_tag(TAG_GITBRANCH, branch)
+                BenchmarkRecord::categorized(name, "snark", branch)
                     .with_field(F_PROOFS_UPDATES, FieldValue::Float(proofs_updates))
                     .with_field(F_NON_PROOF_PAIRS, FieldValue::Float(np_pairs))
                     .with_field(F_NON_PROOF_SINGLES, FieldValue::Float(np_singles))
@@ -98,6 +92,7 @@ impl Parser for SnarkParser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parse::TAG_CATEGORY;
 
     const FIXTURE: &str = include_str!("../../tests/fixtures/snark.txt");
 

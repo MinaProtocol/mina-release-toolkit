@@ -63,6 +63,11 @@ pub async fn historical_mean(
     field: &str,
     n: usize,
 ) -> Result<Option<HistoricalMean>> {
+    // Every interpolated string is escaped — even `bucket`, which
+    // comes from a trusted env var. Treat the Flux query as a
+    // boundary and never bypass escaping; if we ever take a bucket
+    // from CLI input or a config file we don't want to discover this
+    // is a regression.
     let q = format!(
         "from(bucket: \"{bucket}\")
            |> range(start: -30d)
@@ -72,7 +77,7 @@ pub async fn historical_mean(
            |> keep(columns: [\"_value\", \"_time\"])
            |> sort(columns: [\"_time\"], desc: true)
            |> limit(n: {n})",
-        bucket = cfg.bucket,
+        bucket = escape(&cfg.bucket),
         branch = escape(branch),
         measurement = escape(measurement),
         field = escape(field),
