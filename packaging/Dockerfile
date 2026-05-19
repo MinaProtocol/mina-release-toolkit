@@ -17,7 +17,10 @@
 #     docker run --rm mina-release-toolkit:dev buildkite-cache-manager --help
 
 # ----- 1. Builder ------------------------------------------------------
-FROM rust:1.82-bookworm AS builder
+# Track the latest stable Rust 1.x release. Pinned floor: Cargo 1.85+
+# is required because transitive dep `idna_adapter 1.2.2` uses the
+# `edition2024` feature, which only stabilized in 1.85 (Feb 2025).
+FROM rust:1-bookworm AS builder
 
 WORKDIR /src
 
@@ -38,12 +41,14 @@ COPY buildkite-cache-manager   buildkite-cache-manager/
 COPY deb-toolkit               deb-toolkit/
 
 # Each crate is its own standalone build (no workspace at the repo
-# root), so we cargo build each in turn. `--locked` keeps the build
-# reproducible against the committed Cargo.lock files.
+# root), so we cargo build each in turn. The three in-tree binaries
+# use `--locked` against their committed Cargo.lock files; deb-toolkit
+# (a submodule) gitignores its Cargo.lock upstream so we let cargo
+# resolve fresh.
 RUN (cd release-manager         && cargo build --release --locked) && \
     (cd mina-bench-upload       && cargo build --release --locked) && \
     (cd buildkite-cache-manager && cargo build --release --locked) && \
-    (cd deb-toolkit             && cargo build --release --locked)
+    (cd deb-toolkit             && cargo build --release)
 
 # ----- 2. Runtime ------------------------------------------------------
 FROM debian:bookworm-slim AS runtime

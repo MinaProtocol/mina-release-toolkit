@@ -123,11 +123,16 @@ jobs:
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
 
       - name: Build all four binaries
+        # The three in-tree crates ship a committed Cargo.lock and
+        # build with `--locked`. The deb-toolkit submodule's upstream
+        # gitignores its lock so we let cargo resolve fresh for that
+        # one — `--locked` would fail with "cannot create the lock
+        # file because --locked was passed".
         run: |
           (cd release-manager         && cargo build --release --locked)
           (cd mina-bench-upload       && cargo build --release --locked)
           (cd buildkite-cache-manager && cargo build --release --locked)
-          (cd deb-toolkit             && cargo build --release --locked)
+          (cd deb-toolkit             && cargo build --release)
 
       - name: Assemble .deb via deb-toolkit
         run: packaging/build-deb.sh "${{ steps.ver.outputs.version }}" ./out
