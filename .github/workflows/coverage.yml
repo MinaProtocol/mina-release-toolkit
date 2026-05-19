@@ -1,0 +1,72 @@
+name: Code Coverage
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'release-manager/**'
+      - 'mina-bench-upload/**'
+      - 'buildkite-cache-manager/**'
+      - '.github/workflows/coverage.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'release-manager/**'
+      - 'mina-bench-upload/**'
+      - 'buildkite-cache-manager/**'
+      - '.github/workflows/coverage.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    name: ${{ matrix.crate }} coverage
+    runs-on: ubuntu-latest
+    strategy:
+      # Run each crate as its own job so a single crate's failure
+      # doesn't poison the others, and so Codecov gets per-flag reports.
+      fail-fast: false
+      matrix:
+        crate: [release-manager, mina-bench-upload, buildkite-cache-manager]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust + llvm-tools-preview
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ matrix.crate }}
+          key: coverage-${{ matrix.crate }}
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Run coverage
+        working-directory: ${{ matrix.crate }}
+        run: |
+          cargo llvm-cov --all-features --workspace --lcov \
+            --output-path lcov.info
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ${{ matrix.crate }}/lcov.info
+          flags: ${{ matrix.crate }}
+          name: ${{ matrix.crate }}
+          # Codecov accepts uploads from public-repo PRs without a token
+          # but a token avoids rate limits. Set CODECOV_TOKEN in repo
+          # secrets if uploads start being throttled.
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
