@@ -1,0 +1,67 @@
+# Codecov configuration for mina-release-toolkit.
+#
+# Coverage is gathered per in-tree Rust crate (release-manager,
+# mina-bench-upload, buildkite-cache-manager) by `.github/workflows/coverage.yml`
+# and uploaded under matching Codecov flags. The submodules
+# (deb-toolkit, deb-s3, dhall-buildkite) report coverage from their
+# own repos.
+
+coverage:
+  # Reasonable defaults — informational only at first.  Tighten the
+  # thresholds once we have a few weeks of trend data and know what
+  # baseline each crate naturally sits at.
+  status:
+    project:
+      default:
+        target: auto
+        # Allow PRs to drop project-wide coverage by up to 1% without
+        # failing — covers the noise floor of small refactors.
+        threshold: 1%
+        if_ci_failed: ignore
+    patch:
+      default:
+        # New code in a PR should be at least 70% covered.  Soft target;
+        # `if_ci_failed: ignore` keeps the build green even if the patch
+        # check is red, while still surfacing the warning on the PR.
+        target: 70%
+        if_ci_failed: ignore
+
+  # Flag definitions — one per in-tree crate.  Codecov uses these to
+  # produce separate coverage reports per crate even though they live
+  # in the same repo.
+  flags:
+    release-manager:
+      paths:
+        - release-manager/
+      carryforward: true
+    mina-bench-upload:
+      paths:
+        - mina-bench-upload/
+      carryforward: true
+    buildkite-cache-manager:
+      paths:
+        - buildkite-cache-manager/
+      carryforward: true
+
+# Don't fail uploads when CI is yellow — coverage is observation, not a
+# gate, until we set explicit thresholds above.
+codecov:
+  require_ci_to_pass: false
+  notify:
+    wait_for_ci: true
+
+# Ignore submodules (their coverage lives in their own repos) and
+# generated / boilerplate files.
+ignore:
+  - "deb-toolkit/"
+  - "deb-s3/"
+  - "dhall-buildkite/"
+  - "rust-buildkite/"
+  - "debian/"
+  - "**/tests/fixtures/**"
+  - "**/target/**"
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false
