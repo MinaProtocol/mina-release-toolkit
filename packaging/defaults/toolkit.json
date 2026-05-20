@@ -1,0 +1,29 @@
+{
+  "vendor": "Mina Protocol",
+  "license": "Apache-2.0",
+  "package_authors": "Mina Protocol Build <build@minaprotocol.com>",
+  "package_maintainer": "Mina Protocol Build <build@minaprotocol.com>",
+  "package_description": "Mina Release Toolkit — deb-toolkit, release-manager, mina-bench-upload, and buildkite-cache-manager bundled into one package.",
+  "package_section": "utils",
+  "package_priority": "optional",
+  "package_homepage": "https://github.com/MinaProtocol/mina-release-toolkit",
+  "package_installed_size": "",
+  "package_source": "",
+  "architecture": "amd64",
+  "githash": "",
+  "buildurl": "",
+  "depends": [
+    "ca-certificates",
+    "fakeroot",
+    "dpkg-dev",
+    "debsigs",
+    "debsig-verify",
+    "gnupg",
+    "openssh-client",
+    "rsync"
+  ],
+  "recommended_depends": [
+    "awscli",
+    "curl"
+  ]
+}
