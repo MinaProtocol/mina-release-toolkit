@@ -64,5 +64,19 @@ mkdir -p "${OUTPUT_DIR}"
     --architecture "${ARCH}" \
     --defaults-file "${REPO_ROOT}/packaging/defaults/toolkit.json"
 
+# deb-toolkit writes its output as `<package>_<version>.deb` (no
+# architecture suffix). Rename to the conventional Debian naming so
+# downstream consumers — CI workflow steps, `apt`, GitHub Release
+# assets — see the expected `<package>_<version>_<arch>.deb`.
+PRODUCED="${OUTPUT_DIR}/mina-release-toolkit_${VERSION}.deb"
+FINAL="${OUTPUT_DIR}/mina-release-toolkit_${VERSION}_${ARCH}.deb"
+if [[ ! -f "${PRODUCED}" ]]; then
+    echo "build-deb: expected deb-toolkit to write ${PRODUCED} but no such file exists." >&2
+    echo "build-deb: contents of ${OUTPUT_DIR}:" >&2
+    ls -la "${OUTPUT_DIR}" >&2
+    exit 1
+fi
+mv "${PRODUCED}" "${FINAL}"
+
 echo
-echo "Built: ${OUTPUT_DIR}/mina-release-toolkit_${VERSION}_${ARCH}.deb"
+echo "Built: ${FINAL}"
