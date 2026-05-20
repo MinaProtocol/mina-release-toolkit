@@ -105,7 +105,12 @@ jobs:
           ## Install
 
           \`\`\`bash
-          # Debian: download the .deb from this release's Assets, then:
+          # Debian, via the apt repo (preferred):
+          echo "deb [trusted=yes] http://packages.o1test.net bookworm stable" \\
+              | sudo tee /etc/apt/sources.list.d/mina-release-toolkit.list
+          sudo apt-get update && sudo apt-get install mina-release-toolkit
+
+          # Debian, by downloading the .deb from this release's Assets:
           sudo apt install ./mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb
 
           # Docker:
@@ -121,3 +126,39 @@ jobs:
           body_path: release_extra.md
           files: out/mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb
           fail_on_unmatched_files: true
+
+      # ------- Publish to packages.o1test.net APT repo --------------------
+      # The toolkit's `apt install` channel. CLAUDE.md tags this bucket as
+      # "for everything (multichannel repo for every purpose)" — unsigned
+      # legacy repo, no GPG key required, which is appropriate for the
+      # toolkit (CI / dev-box internal tooling).
+      #
+      # Requires two repo secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY.
+      # Region (us-west-2) and bucket (packages.o1test.net) are stable
+      # per CLAUDE.md and hardcoded here.
+      #
+      # The job uses `deb-s3` (a Ruby gem) directly rather than going
+      # through release-manager: release-manager is the right tool for
+      # the mina-daemon channel-promotion flow but this is a one-shot
+      # upload, and the direct call is one line + one install step.
+
+      - name: Set up Ruby for deb-s3
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+
+      - name: Install deb-s3
+        run: sudo gem install deb-s3
+
+      - name: Publish .deb to packages.o1test.net
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          deb-s3 upload \
+              --bucket=packages.o1test.net \
+              --s3-region=us-west-2 \
+              --codename=bookworm \
+              --component=stable \
+              --preserve-versions \
+              ./out/mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb
