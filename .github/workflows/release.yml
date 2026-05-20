@@ -1,0 +1,123 @@
+name: Release
+
+# Fires on `vX.Y.Z` tag push. Builds the .deb fresh from the tagged
+# commit, creates a GitHub Release with auto-generated notes,
+# attaches the .deb, and references the matching Docker image on
+# GHCR (which the `Package` workflow publishes in parallel for the
+# same tag).
+#
+# Scope: GitHub-side publishing only. Pushing to the actual APT
+# repositories (`stable.apt.packages.minaprotocol.com` etc.) and
+# Docker image signing are intentionally out of scope for the
+# first iteration — they require GPG signing keys and S3 credentials
+# as repo secrets and warrant their own PR.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  IMAGE_NAME: ${{ github.repository_owner }}/mina-release-toolkit
+
+concurrency:
+  # One release run per tag. A re-pushed tag (force-push) cancels the
+  # superseded run rather than racing to attach the same asset twice.
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    name: Build .deb and publish GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # required to create the Release and upload assets
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Cargo workspaces this build touches. Without this the
+          # action looks for a Cargo.toml at the repo root, which we
+          # don't have, and skips caching with a confusing error.
+          workspaces: |
+            release-manager
+            mina-bench-upload
+            buildkite-cache-manager
+            deb-toolkit
+          key: release-${{ github.ref_name }}
+
+      - name: Install Debian build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              fakeroot dpkg-dev build-essential pkg-config libssl-dev
+
+      - name: Strip leading `v` from tag for the Debian version string
+        # Debian version strings are looser than semver but we still
+        # want `mina-release-toolkit_1.2.3_amd64.deb`, not
+        # `…_v1.2.3_…`. `${ref_name#v}` does the trim.
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build the four release binaries
+        # Same lock-file policy as the package workflow: in-tree crates
+        # use `--locked`; the deb-toolkit submodule's lockfile is
+        # gitignored upstream so we let cargo resolve it fresh.
+        run: |
+          (cd release-manager         && cargo build --release --locked)
+          (cd mina-bench-upload       && cargo build --release --locked)
+          (cd buildkite-cache-manager && cargo build --release --locked)
+          (cd deb-toolkit             && cargo build --release)
+
+      - name: Assemble .deb via deb-toolkit
+        run: packaging/build-deb.sh "${{ steps.ver.outputs.version }}" ./out
+
+      - name: Sanity-check the produced .deb
+        run: |
+          set -euo pipefail
+          DEB="./out/mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb"
+          test -f "${DEB}"
+          dpkg-deb --info "${DEB}"
+          dpkg-deb -c    "${DEB}" | head -20
+
+      - name: Compose release body
+        # Small extra context appended to the auto-generated notes:
+        # the matching GHCR image reference and an apt-install
+        # one-liner once the .deb attachment is live.
+        id: body
+        run: |
+          cat > release_extra.md <<EOF
+          ## Artifacts
+
+          - **Debian package** (attached to this release as \`mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb\`)
+          - **Docker image**: \`ghcr.io/${IMAGE_NAME}:${{ steps.ver.outputs.version }}\` — also tagged \`${{ steps.ver.outputs.version }}\`, the major/minor floor, and \`latest\`. See the [Package workflow](https://github.com/${{ github.repository }}/actions/workflows/package.yml) for the build that produced it.
+
+          ## Install
+
+          \`\`\`bash
+          # Debian: download the .deb from this release's Assets, then:
+          sudo apt install ./mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb
+
+          # Docker:
+          docker pull ghcr.io/${IMAGE_NAME}:${{ steps.ver.outputs.version }}
+          \`\`\`
+          EOF
+
+      - name: Create GitHub Release and upload .deb
+        uses: softprops/action-gh-release@v2
+        with:
+          # Auto-generated commit-summary notes; our `body` is appended.
+          generate_release_notes: true
+          body_path: release_extra.md
+          files: out/mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb
+          fail_on_unmatched_files: true
