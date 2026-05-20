@@ -40,27 +40,33 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Rust
+      - name: Install Rust + musl target
+        # Static-linking against musl removes the glibc floor entirely:
+        # one binary that runs on any Linux x86_64. The four crates
+        # already use rustls (no OpenSSL link), so musl Just Works.
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          # Cargo workspaces this build touches. Without this the
-          # action looks for a Cargo.toml at the repo root, which we
-          # don't have, and skips caching with a confusing error.
           workspaces: |
             release-manager
             mina-bench-upload
             buildkite-cache-manager
             deb-toolkit
-          key: release-${{ github.ref_name }}
+          # Cache key includes the target triple so the musl build's
+          # cache doesn't collide with the default-host build cache
+          # used elsewhere.
+          key: release-musl-${{ github.ref_name }}
 
-      - name: Install Debian build tools
+      - name: Install Debian + musl build tools
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-              fakeroot dpkg-dev build-essential pkg-config libssl-dev
+              fakeroot dpkg-dev build-essential pkg-config libssl-dev \
+              musl-tools
 
       - name: Strip leading `v` from tag for the Debian version string
         # Debian version strings are looser than semver but we still
@@ -69,17 +75,26 @@ jobs:
         id: ver
         run: echo "version=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
 
-      - name: Build the four release binaries
-        # Same lock-file policy as the package workflow: in-tree crates
-        # use `--locked`; the deb-toolkit submodule's lockfile is
-        # gitignored upstream so we let cargo resolve it fresh.
+      - name: Build the four release binaries (musl static)
+        # `--target x86_64-unknown-linux-musl` produces fully static
+        # binaries — no glibc dependency, so a single .deb is
+        # installable on bullseye / focal / jammy / noble / bookworm
+        # alike. The lock-file policy is the same as package.yml:
+        # in-tree crates use --locked, the deb-toolkit submodule
+        # gitignores its lockfile upstream so we let cargo resolve.
+        env:
+          TARGET: x86_64-unknown-linux-musl
         run: |
-          (cd release-manager         && cargo build --release --locked)
-          (cd mina-bench-upload       && cargo build --release --locked)
-          (cd buildkite-cache-manager && cargo build --release --locked)
-          (cd deb-toolkit             && cargo build --release)
+          (cd release-manager         && cargo build --release --locked --target "$TARGET")
+          (cd mina-bench-upload       && cargo build --release --locked --target "$TARGET")
+          (cd buildkite-cache-manager && cargo build --release --locked --target "$TARGET")
+          (cd deb-toolkit             && cargo build --release           --target "$TARGET")
 
       - name: Assemble .deb via deb-toolkit
+        # build-deb.sh respects CARGO_TARGET to look in
+        # `target/<triple>/release/` instead of `target/release/`.
+        env:
+          CARGO_TARGET: x86_64-unknown-linux-musl
         run: packaging/build-deb.sh "${{ steps.ver.outputs.version }}" ./out
 
       - name: Sanity-check the produced .deb
@@ -104,9 +119,14 @@ jobs:
 
           ## Install
 
+          The .deb is a fully static musl build — one binary that runs on
+          \`bullseye\`, \`focal\`, \`jammy\`, \`noble\`, and \`bookworm\`. Pick
+          the codename matching your distro for the apt source line:
+
           \`\`\`bash
-          # Debian, via the apt repo (preferred):
-          echo "deb [trusted=yes] http://packages.o1test.net bookworm stable" \\
+          # Debian, via the apt repo (preferred). Replace <CODENAME> with
+          # one of: bullseye focal jammy noble bookworm
+          echo "deb [trusted=yes] http://packages.o1test.net <CODENAME> stable" \\
               | sudo tee /etc/apt/sources.list.d/mina-release-toolkit.list
           sudo apt-get update && sudo apt-get install mina-release-toolkit
 
@@ -150,15 +170,25 @@ jobs:
       - name: Install deb-s3
         run: sudo gem install deb-s3
 
-      - name: Publish .deb to packages.o1test.net
+      - name: Publish .deb to packages.o1test.net (all codenames)
+        # The musl static .deb runs on every Debian/Ubuntu release we
+        # care about (bullseye through noble), so we publish the same
+        # artifact under each codename. deb-s3 happily re-uploads to
+        # multiple codenames as separate logical entries even though
+        # the underlying file in S3 is identical.
         env:
           AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
-          deb-s3 upload \
-              --bucket=packages.o1test.net \
-              --s3-region=us-west-2 \
-              --codename=bookworm \
-              --component=stable \
-              --preserve-versions \
-              ./out/mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb
+          set -euo pipefail
+          DEB="./out/mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb"
+          for codename in bullseye focal jammy noble bookworm; do
+              echo "=== uploading to ${codename}/stable ==="
+              deb-s3 upload \
+                  --bucket=packages.o1test.net \
+                  --s3-region=us-west-2 \
+                  --codename="${codename}" \
+                  --component=stable \
+                  --preserve-versions \
+                  "${DEB}"
+          done

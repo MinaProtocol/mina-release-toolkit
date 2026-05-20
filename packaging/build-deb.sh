@@ -29,11 +29,31 @@ OUTPUT_DIR="$2"
 ARCH="${ARCH:-amd64}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEB_TOOLKIT_BIN="${REPO_ROOT}/deb-toolkit/target/release/deb-toolkit"
+
+# When CARGO_TARGET is set (e.g. `x86_64-unknown-linux-musl` for a
+# static glibc-free build), cargo places its output under
+# `target/<TRIPLE>/release/` instead of the default `target/release/`.
+# We follow the same convention for all four crates so a single env
+# var swaps "default native build" for "musl static build" without
+# changing any other code.
+TARGET_SUBDIR="release"
+if [[ -n "${CARGO_TARGET:-}" ]]; then
+    TARGET_SUBDIR="${CARGO_TARGET}/release"
+fi
+
+bin_path() {
+    # $1 = crate dir, $2 = binary name
+    echo "${REPO_ROOT}/$1/target/${TARGET_SUBDIR}/$2"
+}
+
+DEB_TOOLKIT_BIN="$(bin_path deb-toolkit deb-toolkit)"
 
 if [[ ! -x "${DEB_TOOLKIT_BIN}" ]]; then
     echo "deb-toolkit release binary not found at ${DEB_TOOLKIT_BIN}." >&2
     echo "Run 'cargo build --release' in deb-toolkit/ first." >&2
+    if [[ -n "${CARGO_TARGET:-}" ]]; then
+        echo "(CARGO_TARGET=${CARGO_TARGET} is set; pass --target ${CARGO_TARGET} to cargo build.)" >&2
+    fi
     exit 1
 fi
 
@@ -43,10 +63,10 @@ fi
 STAGING="$(mktemp -d)"
 trap 'rm -rf "${STAGING}"' EXIT
 
-install -D -m 0755 "${REPO_ROOT}/release-manager/target/release/release-manager"                  "${STAGING}/usr/bin/release-manager"
-install -D -m 0755 "${REPO_ROOT}/mina-bench-upload/target/release/mina-bench-upload"              "${STAGING}/usr/bin/mina-bench-upload"
-install -D -m 0755 "${REPO_ROOT}/buildkite-cache-manager/target/release/buildkite-cache-manager"  "${STAGING}/usr/bin/buildkite-cache-manager"
-install -D -m 0755 "${DEB_TOOLKIT_BIN}"                                                            "${STAGING}/usr/bin/deb-toolkit"
+install -D -m 0755 "$(bin_path release-manager release-manager)"                 "${STAGING}/usr/bin/release-manager"
+install -D -m 0755 "$(bin_path mina-bench-upload mina-bench-upload)"             "${STAGING}/usr/bin/mina-bench-upload"
+install -D -m 0755 "$(bin_path buildkite-cache-manager buildkite-cache-manager)" "${STAGING}/usr/bin/buildkite-cache-manager"
+install -D -m 0755 "${DEB_TOOLKIT_BIN}"                                          "${STAGING}/usr/bin/deb-toolkit"
 
 mkdir -p "${OUTPUT_DIR}"
 
