@@ -150,8 +150,7 @@ jobs:
           path: out/mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb
           if-no-files-found: error
 
-      - name: Attach to GitHub Release (tag push only)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: out/mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb
+      # NB: GitHub Release creation + asset attachment for tag pushes
+      # lives in `.github/workflows/release.yml`. The Package workflow
+      # is responsible only for the artifact build + workflow-artifact
+      # upload (always-on) and the GHCR push (docker job, also on tag).

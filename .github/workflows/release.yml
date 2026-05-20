@@ -1,0 +1,194 @@
+name: Release
+
+# Fires on `vX.Y.Z` tag push. Builds the .deb fresh from the tagged
+# commit, creates a GitHub Release with auto-generated notes,
+# attaches the .deb, and references the matching Docker image on
+# GHCR (which the `Package` workflow publishes in parallel for the
+# same tag).
+#
+# Scope: GitHub-side publishing only. Pushing to the actual APT
+# repositories (`stable.apt.packages.minaprotocol.com` etc.) and
+# Docker image signing are intentionally out of scope for the
+# first iteration — they require GPG signing keys and S3 credentials
+# as repo secrets and warrant their own PR.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  IMAGE_NAME: ${{ github.repository_owner }}/mina-release-toolkit
+
+concurrency:
+  # One release run per tag. A re-pushed tag (force-push) cancels the
+  # superseded run rather than racing to attach the same asset twice.
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    name: Build .deb and publish GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # required to create the Release and upload assets
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust + musl target
+        # Static-linking against musl removes the glibc floor entirely:
+        # one binary that runs on any Linux x86_64. The four crates
+        # already use rustls (no OpenSSL link), so musl Just Works.
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            release-manager
+            mina-bench-upload
+            buildkite-cache-manager
+            deb-toolkit
+          # Cache key includes the target triple so the musl build's
+          # cache doesn't collide with the default-host build cache
+          # used elsewhere.
+          key: release-musl-${{ github.ref_name }}
+
+      - name: Install Debian + musl build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              fakeroot dpkg-dev build-essential pkg-config libssl-dev \
+              musl-tools
+
+      - name: Strip leading `v` from tag for the Debian version string
+        # Debian version strings are looser than semver but we still
+        # want `mina-release-toolkit_1.2.3_amd64.deb`, not
+        # `…_v1.2.3_…`. `${ref_name#v}` does the trim.
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build the four release binaries (musl static)
+        # `--target x86_64-unknown-linux-musl` produces fully static
+        # binaries — no glibc dependency, so a single .deb is
+        # installable on bullseye / focal / jammy / noble / bookworm
+        # alike. The lock-file policy is the same as package.yml:
+        # in-tree crates use --locked, the deb-toolkit submodule
+        # gitignores its lockfile upstream so we let cargo resolve.
+        env:
+          TARGET: x86_64-unknown-linux-musl
+        run: |
+          (cd release-manager         && cargo build --release --locked --target "$TARGET")
+          (cd mina-bench-upload       && cargo build --release --locked --target "$TARGET")
+          (cd buildkite-cache-manager && cargo build --release --locked --target "$TARGET")
+          (cd deb-toolkit             && cargo build --release           --target "$TARGET")
+
+      - name: Assemble .deb via deb-toolkit
+        # build-deb.sh respects CARGO_TARGET to look in
+        # `target/<triple>/release/` instead of `target/release/`.
+        env:
+          CARGO_TARGET: x86_64-unknown-linux-musl
+        run: packaging/build-deb.sh "${{ steps.ver.outputs.version }}" ./out
+
+      - name: Sanity-check the produced .deb
+        run: |
+          set -euo pipefail
+          DEB="./out/mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb"
+          test -f "${DEB}"
+          dpkg-deb --info "${DEB}"
+          dpkg-deb -c    "${DEB}" | head -20
+
+      - name: Compose release body
+        # Small extra context appended to the auto-generated notes:
+        # the matching GHCR image reference and an apt-install
+        # one-liner once the .deb attachment is live.
+        id: body
+        run: |
+          cat > release_extra.md <<EOF
+          ## Artifacts
+
+          - **Debian package** (attached to this release as \`mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb\`)
+          - **Docker image**: \`ghcr.io/${IMAGE_NAME}:${{ steps.ver.outputs.version }}\` — also tagged \`${{ steps.ver.outputs.version }}\`, the major/minor floor, and \`latest\`. See the [Package workflow](https://github.com/${{ github.repository }}/actions/workflows/package.yml) for the build that produced it.
+
+          ## Install
+
+          The .deb is a fully static musl build — one binary that runs on
+          \`bullseye\`, \`focal\`, \`jammy\`, \`noble\`, and \`bookworm\`. Pick
+          the codename matching your distro for the apt source line:
+
+          \`\`\`bash
+          # Debian, via the apt repo (preferred). Replace <CODENAME> with
+          # one of: bullseye focal jammy noble bookworm
+          echo "deb [trusted=yes] http://packages.o1test.net <CODENAME> stable" \\
+              | sudo tee /etc/apt/sources.list.d/mina-release-toolkit.list
+          sudo apt-get update && sudo apt-get install mina-release-toolkit
+
+          # Debian, by downloading the .deb from this release's Assets:
+          sudo apt install ./mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb
+
+          # Docker:
+          docker pull ghcr.io/${IMAGE_NAME}:${{ steps.ver.outputs.version }}
+          \`\`\`
+          EOF
+
+      - name: Create GitHub Release and upload .deb
+        uses: softprops/action-gh-release@v2
+        with:
+          # Auto-generated commit-summary notes; our `body` is appended.
+          generate_release_notes: true
+          body_path: release_extra.md
+          files: out/mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb
+          fail_on_unmatched_files: true
+
+      # ------- Publish to packages.o1test.net APT repo --------------------
+      # The toolkit's `apt install` channel. CLAUDE.md tags this bucket as
+      # "for everything (multichannel repo for every purpose)" — unsigned
+      # legacy repo, no GPG key required, which is appropriate for the
+      # toolkit (CI / dev-box internal tooling).
+      #
+      # Requires two repo secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY.
+      # Region (us-west-2) and bucket (packages.o1test.net) are stable
+      # per CLAUDE.md and hardcoded here.
+      #
+      # The job uses `deb-s3` (a Ruby gem) directly rather than going
+      # through release-manager: release-manager is the right tool for
+      # the mina-daemon channel-promotion flow but this is a one-shot
+      # upload, and the direct call is one line + one install step.
+
+      - name: Set up Ruby for deb-s3
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+
+      - name: Install deb-s3
+        run: sudo gem install deb-s3
+
+      - name: Publish .deb to packages.o1test.net (all codenames)
+        # The musl static .deb runs on every Debian/Ubuntu release we
+        # care about (bullseye through noble), so we publish the same
+        # artifact under each codename. deb-s3 happily re-uploads to
+        # multiple codenames as separate logical entries even though
+        # the underlying file in S3 is identical.
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          DEB="./out/mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb"
+          for codename in bullseye focal jammy noble bookworm; do
+              echo "=== uploading to ${codename}/stable ==="
+              deb-s3 upload \
+                  --bucket=packages.o1test.net \
+                  --s3-region=us-west-2 \
+                  --codename="${codename}" \
+                  --component=stable \
+                  --preserve-versions \
+                  "${DEB}"
+          done
