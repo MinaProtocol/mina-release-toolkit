@@ -8,6 +8,12 @@ on:
       - 'mina-bench-upload/**'
       - 'buildkite-cache-manager/**'
       - 'packaging/**'
+      # deb-toolkit is a submodule: a version bump changes the gitlink at
+      # the exact path `deb-toolkit`, not a file under `deb-toolkit/`, so
+      # `deb-toolkit/**` would never match. The exact path is what triggers
+      # a rebuild when the pointer moves — which is how a deb-toolkit fix
+      # (it lives in its own repo) reaches the published image.
+      - 'deb-toolkit'
       - '.github/workflows/package.yml'
     tags:
       - 'v*'
@@ -18,6 +24,7 @@ on:
       - 'mina-bench-upload/**'
       - 'buildkite-cache-manager/**'
       - 'packaging/**'
+      - 'deb-toolkit'
       - '.github/workflows/package.yml'
 
 env:
