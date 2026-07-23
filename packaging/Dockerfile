@@ -61,6 +61,12 @@ RUN apt-get update && \
         ca-certificates \
         # deb-toolkit: build/sign/verify .debs
         fakeroot dpkg-dev debsigs debsig-verify gnupg \
+        # .deb data.tar compressors. A .deb's data member may be gzip-, xz-, or
+        # zstd-compressed; a self-contained image for handling Debian packages
+        # should carry all three CLI compressors so it can open and repack any
+        # standard .deb. zstd was missing; xz-utils is listed explicitly rather
+        # than relied on as a transitive dependency.
+        xz-utils zstd \
         # release-manager: pushes to APT and S3
         awscli \
         # buildkite-cache-manager: SSH transport to Hetzner
