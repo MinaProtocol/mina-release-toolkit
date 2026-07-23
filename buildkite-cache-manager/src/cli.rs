@@ -36,8 +36,13 @@ pub enum Commands {
         /// Cache-relative path to read from (supports wildcards)
         input: String,
 
-        /// Local destination path
-        output: String,
+        /// Local destination path.
+        ///
+        /// Named `destination` rather than `output` on purpose: the global
+        /// `--output`/`-f` format flag has clap id `output`, and a positional
+        /// with the same id makes clap panic at parse time ("Mismatch between
+        /// definition and access of `output`").
+        destination: String,
     },
 
     /// Write (copy) local file(s) to the CI cache
@@ -114,4 +119,54 @@ pub enum FolderType {
     Legacy,
     /// All folder types
     All,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    /// clap's own definition validator. Catches arg-id collisions — e.g. the
+    /// global `--output` flag versus a subcommand positional also named
+    /// `output` — which otherwise only surface as a runtime panic when that
+    /// subcommand is actually invoked (the unit tests call each command's
+    /// `execute()` directly, bypassing the parser, so they miss it).
+    #[test]
+    fn cli_definition_is_valid() {
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn read_parses_without_panicking() {
+        let cli = Cli::try_parse_from(["buildkite-cache-manager", "read", "src/f", "/dest"])
+            .expect("read should parse");
+        match cli.command {
+            Commands::Read {
+                input, destination, ..
+            } => {
+                assert_eq!(input, "src/f");
+                assert_eq!(destination, "/dest");
+            }
+            other => panic!("expected Read, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn write_parses_multiple_inputs() {
+        let cli =
+            Cli::try_parse_from(["buildkite-cache-manager", "write", "a", "b", "dest/"]).unwrap();
+        match cli.command {
+            Commands::Write { paths, .. } => assert_eq!(paths, vec!["a", "b", "dest/"]),
+            other => panic!("expected Write, got {other:?}"),
+        }
+    }
+
+    /// The global format flag is still reachable and keeps its `--output`/`-f`
+    /// spelling even alongside the read positional.
+    #[test]
+    fn global_output_flag_still_works() {
+        let cli = Cli::try_parse_from(["buildkite-cache-manager", "-f", "json", "read", "x", "y"])
+            .unwrap();
+        assert_eq!(cli.output, OutputFormat::Json);
+    }
 }

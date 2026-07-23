@@ -18,7 +18,7 @@ fn main() -> Result<()> {
             root,
             skip_dirs_create,
             input,
-            output: out_path,
+            destination: out_path,
         } => {
             let build_id = get_build_id()?;
             let root = root.as_deref().unwrap_or(&build_id);
