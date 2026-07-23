@@ -36,17 +36,18 @@ fn main() -> Result<()> {
         Commands::Write {
             r#override,
             root,
-            input,
-            output: out_path,
+            paths,
         } => {
             let build_id = get_build_id()?;
             let root = root.as_deref().unwrap_or(&build_id);
+            // `num_args = 2..` guarantees at least one input and a destination.
+            let (dest, inputs) = paths.split_last().expect("clap enforces at least 2 paths");
             commands::write::execute(
                 &backend,
                 &cache_base,
                 root,
-                input,
-                out_path,
+                inputs,
+                dest,
                 *r#override,
                 output,
             )
