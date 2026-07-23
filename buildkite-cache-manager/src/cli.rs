@@ -51,11 +51,11 @@ pub enum Commands {
         #[arg(short, long)]
         root: Option<String>,
 
-        /// Local path to file(s) to write (supports wildcards)
-        input: String,
-
-        /// Cache-relative destination path
-        output: String,
+        /// One or more local paths to write (wildcards supported), followed by
+        /// the cache-relative destination directory as the final argument.
+        /// Mirrors the bash `write-to-dir INPUT... OUTPUT_DIR`.
+        #[arg(required = true, num_args = 2..)]
+        paths: Vec<String>,
     },
 
     /// List files and folders in the CI cache

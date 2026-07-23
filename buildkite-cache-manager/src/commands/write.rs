@@ -13,12 +13,14 @@ struct WriteResult {
     status: &'static str,
 }
 
-/// Execute the write command: copy local files to cache.
+/// Execute the write command: copy one or more local inputs into a cache
+/// directory. Mirrors the bash `write-to-dir`: every input (literal path or
+/// glob) is copied into `output`, which is created as a directory.
 pub fn execute(
     backend: &dyn CacheBackend,
     cache_base: &str,
     root: &str,
-    input: &str,
+    inputs: &[String],
     output: &str,
     override_existing: bool,
     format: &OutputFormat,
@@ -29,28 +31,32 @@ pub fn execute(
         .create_dir_all(&cache_path)
         .context("Failed to create cache directories")?;
 
-    if *format == OutputFormat::Text {
-        println!("..Copying {} -> {}", input, cache_path.display());
-    }
+    let mut results = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        if *format == OutputFormat::Text {
+            println!("..Copying {} -> {}", input, cache_path.display());
+        }
 
-    // If the input contains glob characters, use glob copy
-    if input.contains('*') || input.contains('?') || input.contains('[') {
-        backend.copy_glob(input, &cache_path, override_existing)?;
-    } else {
-        let src = PathBuf::from(input);
-        backend.copy(&src, &cache_path, override_existing)?;
+        // If the input contains glob characters, use glob copy
+        if input.contains('*') || input.contains('?') || input.contains('[') {
+            backend.copy_glob(input, &cache_path, override_existing)?;
+        } else {
+            let src = PathBuf::from(input);
+            backend.copy(&src, &cache_path, override_existing)?;
+        }
+
+        results.push(WriteResult {
+            source: input.clone(),
+            destination: cache_path.to_string_lossy().to_string(),
+            status: "ok",
+        });
     }
 
     match format {
         OutputFormat::Text => println!("Done."),
-        OutputFormat::Json => {
-            let result = WriteResult {
-                source: input.to_string(),
-                destination: cache_path.to_string_lossy().to_string(),
-                status: "ok",
-            };
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
+        // An array, one entry per input, so single- and multi-input writes have
+        // the same shape.
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&results)?),
     }
 
     Ok(())

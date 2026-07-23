@@ -36,12 +36,17 @@ buildkite-cache-manager read --override --skip-dirs-create file.txt /existing-di
 
 ### write
 
-Copy local files to the cache. Requires `BUILDKITE_BUILD_ID`.
+Copy local files to the cache. Requires `BUILDKITE_BUILD_ID`. Takes one or more
+inputs (literal paths or globs) followed by the destination directory as the
+final argument — matching the bash `write-to-dir INPUT... OUTPUT_DIR`.
 
 ```bash
 buildkite-cache-manager write mina-devnet*.deb debians/
 buildkite-cache-manager write --override build.tar.gz artifacts/
 buildkite-cache-manager write --root custom-root file.txt uploads/
+
+# Multiple inputs into one destination directory
+buildkite-cache-manager write hashes.json new_config.json hardfork/
 ```
 
 ### list

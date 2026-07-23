@@ -285,7 +285,7 @@ fn test_write_and_read() {
         &mock,
         "/cache",
         "test-build-id",
-        "/local/artifact.tar.gz",
+        &["/local/artifact.tar.gz".to_string()],
         "artifacts/",
         false,
         TEXT,
@@ -306,6 +306,35 @@ fn test_write_and_read() {
         TEXT,
     );
     assert!(result.is_ok());
+}
+
+#[test]
+fn test_write_multiple_inputs_to_dir() {
+    // Parity with the bash `write-to-dir INPUT_1 INPUT_2 ... OUTPUT_DIR`: every
+    // input is copied into the destination directory in one call.
+    let mock = MockBackend::new();
+    let now = Utc::now();
+
+    mock.add_dir("/local", now);
+    mock.add_file("/local/hashes.json", 100, now);
+    mock.add_file("/local/new_config.json", 200, now);
+    mock.add_dir("/cache", now);
+
+    let result = write::execute(
+        &mock,
+        "/cache",
+        "test-build-id",
+        &[
+            "/local/hashes.json".to_string(),
+            "/local/new_config.json".to_string(),
+        ],
+        "hardfork/",
+        false,
+        TEXT,
+    );
+    assert!(result.is_ok());
+    assert!(mock.path_exists("/cache/test-build-id/hardfork/hashes.json"));
+    assert!(mock.path_exists("/cache/test-build-id/hardfork/new_config.json"));
 }
 
 #[test]
