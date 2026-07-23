@@ -37,8 +37,9 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Docker image. Builds on every PR (for sanity); only pushes to GHCR on
-  # main / develop / tag.
+  # Docker image. Builds on every PR (for sanity); on main / develop / tag it
+  # pushes to Docker Hub (docker.io/minaprotocol, publicly pullable — this is
+  # the copy CI consumes) and to GHCR.
   # ---------------------------------------------------------------------------
   docker:
     name: Docker image
@@ -59,7 +60,13 @@ jobs:
         id: tags
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Docker Hub requires a lowercase namespace, so `minaprotocol` is
+          # hardcoded rather than derived from ${{ github.repository_owner }}
+          # (which is the mixed-case `MinaProtocol`). The same tag set is
+          # applied to both registries.
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            docker.io/minaprotocol/mina-release-toolkit
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -74,6 +81,13 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build (and push on non-PR)
         uses: docker/build-push-action@v5
