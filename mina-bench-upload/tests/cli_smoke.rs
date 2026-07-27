@@ -93,6 +93,13 @@ fn dry_run_ledger_apply() {
 }
 
 #[test]
+fn dry_run_generic_json() {
+    let (ok, _, stderr) = run_dry_run("generic-json", "generic.json");
+    assert!(ok, "stderr:\n{}", stderr);
+    assert!(stderr.contains("Parsed 2 record(s)"), "stderr:\n{}", stderr);
+}
+
+#[test]
 fn parse_error_exits_2() {
     let out = Command::new(bin())
         .args([

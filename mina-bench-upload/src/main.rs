@@ -7,8 +7,9 @@ use std::process::ExitCode;
 use mina_bench_upload::config::InfluxConfig;
 use mina_bench_upload::influx;
 use mina_bench_upload::parse::{
-    self, archive::ArchiveParser, heap::HeapParser, janestreet::JaneStreetParser,
-    ledger_apply::LedgerApplyParser, snark::SnarkParser, zkapp::ZkappParser, Parser,
+    self, archive::ArchiveParser, generic::GenericJsonParser, heap::HeapParser,
+    janestreet::JaneStreetParser, ledger_apply::LedgerApplyParser, snark::SnarkParser,
+    zkapp::ZkappParser, Parser,
 };
 use mina_bench_upload::regression::{self, Thresholds};
 
@@ -29,6 +30,9 @@ enum Format {
     Archive,
     Heap,
     LedgerApply,
+    /// Generic passthrough: a JSON array of {measurement, tags, fields,
+    /// timestamp_ns} records. For projects that emit their own metrics.
+    GenericJson,
 }
 
 #[derive(Debug, ClapParser)]
@@ -244,6 +248,7 @@ fn parse_input(format: Format, input: &str, branch: &str) -> Result<Vec<parse::B
         Format::Archive => ArchiveParser.parse(input, branch)?,
         Format::Heap => HeapParser.parse(input, branch)?,
         Format::LedgerApply => LedgerApplyParser.parse(input, branch)?,
+        Format::GenericJson => GenericJsonParser.parse(input, branch)?,
     };
     if records.is_empty() {
         return Err(anyhow!(

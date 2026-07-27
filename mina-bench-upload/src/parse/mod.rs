@@ -7,6 +7,7 @@ use anyhow::Result;
 use std::collections::BTreeMap;
 
 pub mod archive;
+pub mod generic;
 pub mod heap;
 pub mod janestreet;
 pub mod ledger_apply;

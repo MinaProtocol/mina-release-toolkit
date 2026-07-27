@@ -58,6 +58,7 @@ mina-bench-upload \
 | `archive`         | archive-node bench         | JSON array of `{operation, avg_time_ms}`.                    |
 | `heap`            | `mina-heap-usage`          | `Data of type X uses Y heap words = Z bytes`.                |
 | `ledger-apply`    | ledger apply test          | JSON object with `final_time` + `preparation_steps_mean`.    |
+| `generic-json`    | any project                | JSON array of `{measurement, tags, fields, timestamp_ns}` — a passthrough for benches that emit their own metrics (no bespoke parser needed). |
 
 The InfluxDB measurement / tag / field names this tool writes match
 what the Python tool was writing historically, so the regression
