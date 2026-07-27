@@ -1,0 +1,20 @@
+[
+  {
+    "measurement": "archive_memory_bench",
+    "tags": { "variant": "ci" },
+    "fields": {
+      "pg_backend_rss_peak_kib": 161624,
+      "blocks_ok": 1273,
+      "blocks_per_sec": 20.87
+    },
+    "timestamp_ns": 1784999223801092376
+  },
+  {
+    "measurement": "mina_caqti_pg_memory",
+    "tags": { "scenario": "upsert_into_cols_returning" },
+    "fields": {
+      "prepared_final": 4000,
+      "backend_kib_final": 51234
+    }
+  }
+]
