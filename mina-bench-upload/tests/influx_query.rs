@@ -45,7 +45,7 @@ async fn historical_mean_parses_samples_without_field_column() {
 
     let hist = historical_mean(
         &cfg_for(&server),
-        "develop",
+        &["develop".to_string()],
         "Zkapp_command.t",
         "heap words",
         10,
@@ -71,7 +71,7 @@ async fn historical_mean_is_none_on_empty_result() {
 
     let hist = historical_mean(
         &cfg_for(&server),
-        "develop",
+        &["develop".to_string()],
         "Nonexistent.t",
         "heap words",
         10,
@@ -79,4 +79,41 @@ async fn historical_mean_is_none_on_empty_result() {
     .await
     .expect("empty query should still succeed");
     assert!(hist.is_none(), "empty result must be None, got {hist:?}");
+}
+
+#[tokio::test]
+async fn historical_mean_queries_the_union_of_branches() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(TWO_SAMPLE_CSV))
+        .mount(&server)
+        .await;
+
+    let branches = [
+        "develop".to_string(),
+        "compatible".to_string(),
+        "master".to_string(),
+    ];
+    let hist = historical_mean(
+        &cfg_for(&server),
+        &branches,
+        "Zkapp_command.t",
+        "heap words",
+        10,
+    )
+    .await
+    .expect("query should succeed")
+    .expect("two samples means Some");
+    assert_eq!(hist.samples_found, 2);
+
+    // The Flux query must filter on all three branches, ORed together.
+    let reqs = server
+        .received_requests()
+        .await
+        .expect("request recording enabled");
+    let body = String::from_utf8_lossy(&reqs[0].body);
+    for b in ["develop", "compatible", "master"] {
+        assert!(body.contains(b), "query missing branch {b}; body: {body}");
+    }
+    assert!(body.contains(" or "), "branches must be ORed; body: {body}");
 }
