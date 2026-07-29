@@ -46,11 +46,21 @@ impl HistoricalMean {
 /// the caller, which decides whether to skip or fail).
 pub async fn historical_mean(
     cfg: &InfluxConfig,
-    branch: &str,
+    branches: &[String],
     measurement: &str,
     field: &str,
     n: usize,
 ) -> Result<Option<HistoricalMean>> {
+    // Compare against the union of one or more branches (mirrors the old
+    // harness's `-m develop -m compatible -m master`): a wider, more
+    // stable baseline than a single branch, which matters for noisy
+    // timing benches. Builds `(gitbranch == "a" or gitbranch == "b" ...)`.
+    let branch_pred = branches
+        .iter()
+        .map(|b| format!("r[\"gitbranch\"] == \"{}\"", escape(b)))
+        .collect::<Vec<_>>()
+        .join(" or ");
+
     // Every interpolated string is escaped — even `bucket`, which
     // comes from a trusted env var. Treat the Flux query as a
     // boundary and never bypass escaping; if we ever take a bucket
@@ -59,14 +69,14 @@ pub async fn historical_mean(
     let q = format!(
         "from(bucket: \"{bucket}\")
            |> range(start: -30d)
-           |> filter(fn: (r) => r[\"gitbranch\"] == \"{branch}\"
+           |> filter(fn: (r) => ({branch_pred})
                                 and r._measurement == \"{measurement}\"
                                 and r._field == \"{field}\")
            |> keep(columns: [\"_value\", \"_time\"])
            |> sort(columns: [\"_time\"], desc: true)
            |> limit(n: {n})",
         bucket = escape(&cfg.bucket),
-        branch = escape(branch),
+        branch_pred = branch_pred,
         measurement = escape(measurement),
         field = escape(field),
         n = n,

@@ -51,10 +51,18 @@ struct Cli {
     input: String,
 
     /// The git branch the benchmark was run from. Recorded as the
-    /// `gitbranch` tag on every record. The same value is used for
-    /// the regression query filter.
+    /// `gitbranch` tag on every record, and the default regression
+    /// baseline when no `--compare-branch` is given.
     #[arg(long)]
     branch: String,
+
+    /// Branch(es) whose history forms the regression baseline. Repeatable
+    /// (e.g. `--compare-branch develop --compare-branch master`); the
+    /// check compares against the union of their samples. A wider, more
+    /// stable baseline than a single branch, which matters for noisy
+    /// timing benches. Defaults to `--branch` when omitted.
+    #[arg(long = "compare-branch")]
+    compare_branch: Vec<String>,
 
     /// Upload parsed records to InfluxDB. Without it, the tool only
     /// prints what it parsed (and runs the regression check if
@@ -196,7 +204,14 @@ async fn run_regression_phase(
     let Some(cfg) = cfg else {
         return false;
     };
-    run_regression_checks(cfg, records, cli.min_samples, thresholds).await
+    // Regression baseline: the explicit `--compare-branch` set, or
+    // `--branch` when none was given.
+    let baseline: Vec<String> = if cli.compare_branch.is_empty() {
+        vec![cli.branch.clone()]
+    } else {
+        cli.compare_branch.clone()
+    };
+    run_regression_checks(cfg, records, &baseline, cli.min_samples, thresholds).await
 }
 
 /// Push records to InfluxDB (or log a dry-run summary).
@@ -263,23 +278,17 @@ fn parse_input(format: Format, input: &str, branch: &str) -> Result<Vec<parse::B
 async fn run_regression_checks(
     cfg: &InfluxConfig,
     records: &[parse::BenchmarkRecord],
+    baseline: &[String],
     min_samples: usize,
     thresholds: Thresholds,
 ) -> bool {
     let mut saw_red = false;
     for record in records {
-        let Some(branch) = record.tags.get(parse::TAG_GITBRANCH) else {
-            log::warn!(
-                "record {} has no gitbranch tag; skipping regression",
-                record.measurement
-            );
-            continue;
-        };
         for (field_name, field_value) in &record.fields {
             let label = format!("{}.{}", record.measurement, field_name);
             match regression::check(
                 cfg,
-                branch,
+                baseline,
                 &record.measurement,
                 field_name,
                 field_value.as_f64(),

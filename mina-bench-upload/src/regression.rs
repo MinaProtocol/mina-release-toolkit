@@ -170,14 +170,14 @@ impl CheckOutcome {
 /// wrapper for the CLI; tests should use [`evaluate`] directly.
 pub async fn check(
     cfg: &InfluxConfig,
-    branch: &str,
+    branches: &[String],
     measurement: &str,
     field: &str,
     current: f64,
     min_samples: usize,
     thresholds: Thresholds,
 ) -> Result<CheckOutcome> {
-    let hist = historical_mean(cfg, branch, measurement, field, min_samples).await?;
+    let hist = historical_mean(cfg, branches, measurement, field, min_samples).await?;
     Ok(evaluate(
         current,
         hist.as_ref().map(|h| h.mean),
