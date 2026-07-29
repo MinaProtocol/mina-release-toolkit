@@ -112,15 +112,22 @@ impl Parser for JaneStreetParser {
     }
 }
 
+/// Parse a number that may carry `_` thousands separators. core_bench
+/// prints large values like `19_478.83us` and `2_792_201.98w`, and
+/// Rust's float parser rejects the underscores until they're removed.
+fn parse_num(s: &str) -> Result<f64> {
+    Ok(s.replace('_', "").parse()?)
+}
+
 /// `12.34us` → `12.34`. `500.0ns` → `0.5` (converted to us). Any other
 /// suffix is a parse error — matches the Python tool which raises
 /// "Time can be expressed only in us or ns".
 fn parse_time_us(cell: &str) -> Result<f64> {
     let s = cell.trim();
     if let Some(stripped) = s.strip_suffix("us") {
-        Ok(stripped.parse()?)
+        parse_num(stripped)
     } else if let Some(stripped) = s.strip_suffix("ns") {
-        let ns: f64 = stripped.parse()?;
+        let ns: f64 = parse_num(stripped)?;
         Ok(ns / 1_000.0)
     } else {
         Err(anyhow!(
@@ -137,9 +144,9 @@ fn parse_time_us(cell: &str) -> Result<f64> {
 fn parse_cycles_kc(cell: &str) -> Result<f64> {
     let s = cell.trim();
     if let Some(stripped) = s.strip_suffix("kc") {
-        Ok(stripped.parse()?)
+        parse_num(stripped)
     } else if let Some(stripped) = s.strip_suffix('c') {
-        Ok(stripped.parse()?)
+        parse_num(stripped)
     } else {
         Err(anyhow!("Cycles cell must end in 'kc' or 'c', got {:?}", s))
     }
@@ -151,7 +158,7 @@ fn parse_words(cell: &str) -> Result<f64> {
     let stripped = s
         .strip_suffix('w')
         .ok_or_else(|| anyhow!("Word cell must end in 'w', got {:?}", s))?;
-    Ok(stripped.parse()?)
+    parse_num(stripped)
 }
 
 #[cfg(test)]
@@ -174,6 +181,25 @@ mod tests {
         let records = p.parse(FIXTURE, "develop").unwrap();
         assert_eq!(records[0].measurement, "some_test");
         assert_eq!(records[1].measurement, "another_test");
+    }
+
+    #[test]
+    fn parses_underscore_separated_numbers() {
+        // Real core_bench output uses `_` thousands separators on large
+        // values; the fixture only had small ones so this was uncaught.
+        let input = "│ Name │ Time/Run │ Cycls/Run │ mWd/Run │ mjWd/Run │ Prom/Run │\n\
+                     │ [vrf] vrf eval checked │ 19_478.83us │ 40_905.26kc │ 2_792_201.98w │ 462_192.81w │ 426_851.81w │\n";
+        let p = JaneStreetParser::mina_base();
+        let records = p.parse(input, "develop").unwrap();
+        assert_eq!(records.len(), 1);
+        let t = records[0].fields.get(F_TIME_PER_RUN).unwrap().as_f64();
+        assert!((t - 19_478.83).abs() < 1e-6, "time was {t}");
+        let mw = records[0]
+            .fields
+            .get(F_MINOR_WORDS_PER_RUN)
+            .unwrap()
+            .as_f64();
+        assert!((mw - 2_792_201.98).abs() < 1e-6, "minor words was {mw}");
     }
 
     #[test]
