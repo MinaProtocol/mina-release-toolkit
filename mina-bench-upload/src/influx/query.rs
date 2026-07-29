@@ -5,29 +5,17 @@ use crate::config::InfluxConfig;
 use anyhow::{Context, Result};
 use influxdb2::Client;
 use influxdb2_structmap::value::Value;
-use influxdb2_structmap::{FromMap, GenericMap};
 
-/// One historical observation pulled from InfluxDB.
-///
-/// The `influxdb2` crate's query API needs a `FromMap` impl on the
-/// row type; the structmap-derive crate is unmaintained, so we
-/// implement the trait by hand. The shape is minimal: a single
-/// `_value` column projected by the Flux `keep(columns:["_value"])`
-/// pipeline below.
-#[derive(Debug, Default)]
-pub struct Sample {
-    pub value: f64,
-}
-
-impl FromMap for Sample {
-    fn from_genericmap(map: GenericMap) -> Self {
-        let value = match map.get("_value") {
-            Some(Value::Double(v)) => v.into_inner(),
-            Some(Value::Long(v)) => *v as f64,
-            Some(Value::UnsignedLong(v)) => *v as f64,
-            _ => 0.0,
-        };
-        Self { value }
+/// Read a numeric InfluxDB `_value` cell as `f64`, regardless of the
+/// integer/float type it deserialized into. Non-numeric or absent cells
+/// yield `None`, so they drop out of the sample set rather than skewing
+/// the mean with a zero.
+fn value_as_f64(v: Option<&Value>) -> Option<f64> {
+    match v {
+        Some(Value::Double(v)) => Some(v.into_inner()),
+        Some(Value::Long(v)) => Some(*v as f64),
+        Some(Value::UnsignedLong(v)) => Some(*v as f64),
+        _ => None,
     }
 }
 
@@ -84,13 +72,22 @@ pub async fn historical_mean(
         n = n,
     );
 
+    // Use `query_raw` rather than the typed `query::<T>` helper: the
+    // latter pivots every row on a `_field` column and panics
+    // (`Option::unwrap()` on `None`) when the projection doesn't include
+    // one -- which ours doesn't, since we `keep` only `_value`/`_time`.
+    // `query_raw` hands back the rows untouched and is unfazed by an
+    // empty result set.
     let client = Client::new(&cfg.host, &cfg.org, &cfg.token);
-    let rows: Vec<Sample> = client
-        .query::<Sample>(Some(influxdb2::models::Query::new(q.clone())))
+    let rows = client
+        .query_raw(Some(influxdb2::models::Query::new(q.clone())))
         .await
         .with_context(|| format!("InfluxDB query failed:\n{}", q))?;
 
-    let values: Vec<f64> = rows.into_iter().map(|s| s.value).collect();
+    let values: Vec<f64> = rows
+        .iter()
+        .filter_map(|r| value_as_f64(r.values.get("_value")))
+        .collect();
     Ok(HistoricalMean::from_samples(&values))
 }
 
