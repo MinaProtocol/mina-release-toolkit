@@ -41,12 +41,16 @@ impl Parser for ZkappParser {
             let cost: f64 = caps["cost"].parse()?;
             let name = format!("P{}S{}PS{}TA{}", p, s, ps, ta);
 
+            // These counts are whole numbers but are recorded as floats: the
+            // Python tool wrote them as floats, and InfluxDB rejects a write
+            // whose field type differs from the existing series (integer vs
+            // float), so emitting Int here fails against historical data.
             out.push(
                 BenchmarkRecord::categorized(name, "zkapp", branch)
-                    .with_field(F_PROOFS_UPDATES, FieldValue::Int(p))
-                    .with_field(F_SIGNED_UPDATES, FieldValue::Int(s))
-                    .with_field(F_PAIRS_OF_SIGNED, FieldValue::Int(ps))
-                    .with_field(F_TOTAL_ACCOUNT_UPDATES, FieldValue::Int(ta))
+                    .with_field(F_PROOFS_UPDATES, FieldValue::Float(p as f64))
+                    .with_field(F_SIGNED_UPDATES, FieldValue::Float(s as f64))
+                    .with_field(F_PAIRS_OF_SIGNED, FieldValue::Float(ps as f64))
+                    .with_field(F_TOTAL_ACCOUNT_UPDATES, FieldValue::Float(ta as f64))
                     .with_field(F_COST, FieldValue::Float(cost)),
             );
         }
@@ -79,6 +83,22 @@ mod tests {
         let records = ZkappParser.parse(FIXTURE, "develop").unwrap();
         let v = records[0].fields.get(F_COST).unwrap().as_f64();
         assert!((v - 10.080000).abs() < 1e-9);
+    }
+
+    #[test]
+    fn count_fields_are_floats_for_influx_schema_compat() {
+        let records = ZkappParser.parse(FIXTURE, "develop").unwrap();
+        for f in [
+            F_PROOFS_UPDATES,
+            F_SIGNED_UPDATES,
+            F_PAIRS_OF_SIGNED,
+            F_TOTAL_ACCOUNT_UPDATES,
+        ] {
+            assert!(
+                matches!(records[0].fields.get(f), Some(FieldValue::Float(_))),
+                "{f} must be a float to match the historical InfluxDB series"
+            );
+        }
     }
 
     #[test]
