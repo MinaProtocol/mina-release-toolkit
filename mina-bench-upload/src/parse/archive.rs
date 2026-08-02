@@ -1,14 +1,20 @@
 //! Parser for the archive benchmark JSON.
 //!
 //! Input is a JSON array of `{operation: String, avg_time_ms: f64}`.
-//! The operation name becomes the InfluxDB measurement; `avg_time_ms`
-//! lands in the `time` field (matching the Python tool's field name).
+//! The operation name becomes the InfluxDB measurement; the value lands
+//! in the `avg_time_ms` field.
+//!
+//! NOT `time`: InfluxDB reserves that name for the timestamp column, and
+//! the archive measurements already carry `time` as their timestamp from
+//! the old Python CSV writes (which silently mapped the `time` column to
+//! the timestamp), so writing a `time` field to them is rejected with a
+//! 422 "invalid field name".
 
 use super::{BenchmarkRecord, FieldValue, Parser};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
-pub const F_TIME: &str = "time";
+pub const F_AVG_TIME_MS: &str = "avg_time_ms";
 
 pub struct ArchiveParser;
 
@@ -27,7 +33,7 @@ impl Parser for ArchiveParser {
             .into_iter()
             .map(|r| {
                 BenchmarkRecord::categorized(r.operation, "archive", branch)
-                    .with_field(F_TIME, FieldValue::Float(r.avg_time_ms))
+                    .with_field(F_AVG_TIME_MS, FieldValue::Float(r.avg_time_ms))
             })
             .collect())
     }
@@ -53,10 +59,12 @@ mod tests {
     }
 
     #[test]
-    fn time_field_is_avg_time_ms() {
+    fn value_lands_in_avg_time_ms_field() {
         let records = ArchiveParser.parse(FIXTURE, "develop").unwrap();
-        let v = records[2].fields.get(F_TIME).unwrap().as_f64();
+        let v = records[2].fields.get(F_AVG_TIME_MS).unwrap().as_f64();
         assert!((v - 12.345).abs() < 1e-9);
+        // Never emit a field literally named "time" — InfluxDB reserves it.
+        assert!(records[2].fields.keys().all(|k| k != "time"));
     }
 
     #[test]
