@@ -135,3 +135,66 @@ fn unknown_format_rejected_by_clap() {
     // don't assert the exact code, just that it didn't run.
     assert!(String::from_utf8_lossy(&out.stderr).contains("not-a-format"));
 }
+
+#[test]
+fn field_threshold_override_is_reported() {
+    let out = Command::new(bin())
+        .args([
+            "--format",
+            "snark",
+            "--input",
+            "tests/fixtures/snark.txt",
+            "--branch",
+            "develop",
+            "--check-regression",
+            "--dry-run",
+            "--field-threshold",
+            "verification time=0.4,0.6",
+            "--exclude-field",
+            "non-proof pairs",
+        ])
+        .output()
+        .expect("spawn");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "stderr:\n{}", stderr);
+    assert!(
+        stderr.contains("threshold override for \"verification time\""),
+        "stderr:\n{}",
+        stderr
+    );
+    assert!(
+        stderr.contains("\"non-proof pairs\" excluded"),
+        "stderr:\n{}",
+        stderr
+    );
+}
+
+#[test]
+fn malformed_field_threshold_exits_config_error() {
+    // A typo must not silently fall back to the global threshold: the
+    // build would then be gated at a value nobody asked for.
+    for bad in ["verification time", "verification time=0.6,0.4"] {
+        let out = Command::new(bin())
+            .args([
+                "--format",
+                "snark",
+                "--input",
+                "tests/fixtures/snark.txt",
+                "--branch",
+                "develop",
+                "--check-regression",
+                "--dry-run",
+                "--field-threshold",
+                bad,
+            ])
+            .output()
+            .expect("spawn");
+        assert_eq!(
+            out.status.code(),
+            Some(4),
+            "wanted EXIT_CONFIG_ERROR (4) for {:?}, stderr:\n{}",
+            bad,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}

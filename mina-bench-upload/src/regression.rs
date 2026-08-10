@@ -23,7 +23,8 @@
 
 use crate::config::InfluxConfig;
 use crate::influx::query::historical_mean;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CheckOutcome {
@@ -66,6 +67,120 @@ impl Default for Thresholds {
             red: 0.20,
         }
     }
+}
+
+/// Which thresholds apply to which metric.
+///
+/// One pair of thresholds cannot fit a benchmark whose fields differ in
+/// run-to-run variance. The snark bench measures both on every run: over
+/// four consecutive nightlies of 17 permutations, the `value` field
+/// varied by a median of 1.0% run to run, while `verification time`
+/// varied by 30% (max 87%). At the default `red = 0.20`, `value` never
+/// tripped in 68 samples — a good gate — and `verification time` tripped
+/// 24% of them, none of which was a regression: the median
+/// `current / mean` was 1.06, i.e. sitting on the historical mean. With
+/// 17 permutations checked independently that is a 99% chance of failing
+/// the build every night on noise alone.
+///
+/// Raising the global `red` to cover the noisy field would drop the
+/// useful gate on the quiet one, so the threshold has to be chosen per
+/// metric instead.
+///
+/// A key is matched whole, first as `"<measurement>.<field>"` and then as
+/// `"<field>"`; it is never split on `.`, so measurement names that
+/// contain dots (`Zkapp_account_update.add`) behave predictably. Matching
+/// the bare field name is what makes this practical for the snark bench,
+/// where one key covers all 17 permutations.
+#[derive(Debug, Clone, Default)]
+pub struct ThresholdTable {
+    default: Thresholds,
+    overrides: HashMap<String, Thresholds>,
+    excluded: HashSet<String>,
+}
+
+impl ThresholdTable {
+    /// A table that applies `default` to every metric.
+    pub fn new(default: Thresholds) -> Self {
+        Self {
+            default,
+            overrides: HashMap::new(),
+            excluded: HashSet::new(),
+        }
+    }
+
+    /// Use `thresholds` for metrics matching `key`.
+    pub fn with_override(mut self, key: impl Into<String>, thresholds: Thresholds) -> Self {
+        self.overrides.insert(key.into(), thresholds);
+        self
+    }
+
+    /// Never gate the build on metrics matching `key`. They are still
+    /// parsed and uploaded, so the trend stays visible in InfluxDB.
+    pub fn with_exclusion(mut self, key: impl Into<String>) -> Self {
+        self.excluded.insert(key.into());
+        self
+    }
+
+    /// The thresholds to apply, or `None` when this metric is excluded
+    /// from the gate.
+    pub fn resolve(&self, measurement: &str, field: &str) -> Option<Thresholds> {
+        let qualified = format!("{}.{}", measurement, field);
+        if self.excluded.contains(&qualified) || self.excluded.contains(field) {
+            return None;
+        }
+        Some(
+            self.overrides
+                .get(&qualified)
+                .or_else(|| self.overrides.get(field))
+                .copied()
+                .unwrap_or(self.default),
+        )
+    }
+}
+
+/// Parse a `--field-threshold` value: `<key>=<yellow>,<red>`.
+///
+/// Split on the LAST `=` so a key may contain one, and reject
+/// `yellow > red`, which would make the yellow band unreachable and is
+/// far more likely a typo than an intent.
+pub fn parse_field_threshold(spec: &str) -> Result<(String, Thresholds)> {
+    let (key, values) = spec
+        .rsplit_once('=')
+        .ok_or_else(|| anyhow!("expected <key>=<yellow>,<red>, got {:?}", spec))?;
+    let key = key.trim();
+    if key.is_empty() {
+        return Err(anyhow!("empty metric key in {:?}", spec));
+    }
+    let (yellow, red) = values
+        .split_once(',')
+        .ok_or_else(|| anyhow!("expected <yellow>,<red> after '=' in {:?}", spec))?;
+    let parse = |s: &str, which: &str| -> Result<f64> {
+        let v: f64 = s
+            .trim()
+            .parse()
+            .map_err(|_| anyhow!("{} threshold in {:?} is not a number", which, spec))?;
+        if !v.is_finite() || v < 0.0 {
+            return Err(anyhow!(
+                "{} threshold in {:?} must be a non-negative fraction",
+                which,
+                spec
+            ));
+        }
+        Ok(v)
+    };
+    let thresholds = Thresholds {
+        yellow: parse(yellow, "yellow")?,
+        red: parse(red, "red")?,
+    };
+    if thresholds.yellow > thresholds.red {
+        return Err(anyhow!(
+            "yellow ({}) is above red ({}) in {:?}",
+            thresholds.yellow,
+            thresholds.red,
+            spec
+        ));
+    }
+    Ok((key.to_string(), thresholds))
 }
 
 /// Pure comparison — no I/O. Exposed so tests don't need to mock
@@ -279,6 +394,98 @@ mod tests {
                 mean: 100.0
             }
         );
+    }
+
+    #[test]
+    fn table_without_overrides_returns_the_default() {
+        let table = ThresholdTable::new(t(0.10, 0.20));
+        assert_eq!(table.resolve("SSPSS", "value").unwrap().red, 0.20);
+    }
+
+    #[test]
+    fn bare_field_override_covers_every_measurement() {
+        // The case this exists for: one key, all 17 snark permutations.
+        let table =
+            ThresholdTable::new(t(0.10, 0.20)).with_override("verification time", t(0.40, 0.60));
+        for shape in ["SSPSS", "SPPPP", "SSS"] {
+            assert_eq!(table.resolve(shape, "verification time").unwrap().red, 0.60);
+            // and the quiet field on the same record keeps the tight gate
+            assert_eq!(table.resolve(shape, "value").unwrap().red, 0.20);
+        }
+    }
+
+    #[test]
+    fn qualified_key_beats_bare_field() {
+        let table = ThresholdTable::new(t(0.10, 0.20))
+            .with_override("verification time", t(0.40, 0.60))
+            .with_override("SSS.verification time", t(0.05, 0.10));
+        assert_eq!(table.resolve("SSS", "verification time").unwrap().red, 0.10);
+        assert_eq!(table.resolve("SPP", "verification time").unwrap().red, 0.60);
+    }
+
+    #[test]
+    fn measurement_containing_a_dot_resolves_whole() {
+        // Archive measurements are operation names with dots in them, so
+        // the key must never be split on '.'.
+        let table = ThresholdTable::new(t(0.10, 0.20))
+            .with_override("Zkapp_account_update.add.avg_time_ms", t(0.5, 0.9));
+        assert_eq!(
+            table
+                .resolve("Zkapp_account_update.add", "avg_time_ms")
+                .unwrap()
+                .red,
+            0.9
+        );
+        // A different operation with the same field keeps the default.
+        assert_eq!(table.resolve("Block.add", "avg_time_ms").unwrap().red, 0.20);
+    }
+
+    #[test]
+    fn excluded_metric_resolves_to_none() {
+        let table = ThresholdTable::new(t(0.10, 0.20)).with_exclusion("verification time");
+        assert!(table.resolve("SSPSS", "verification time").is_none());
+        assert!(table.resolve("SSPSS", "value").is_some());
+    }
+
+    #[test]
+    fn exclusion_wins_over_an_override() {
+        let table = ThresholdTable::new(t(0.10, 0.20))
+            .with_override("verification time", t(0.4, 0.6))
+            .with_exclusion("verification time");
+        assert!(table.resolve("SSPSS", "verification time").is_none());
+    }
+
+    #[test]
+    fn field_threshold_spec_parses() {
+        let (key, th) = parse_field_threshold("verification time=0.4,0.6").unwrap();
+        assert_eq!(key, "verification time");
+        assert_eq!(th.yellow, 0.4);
+        assert_eq!(th.red, 0.6);
+    }
+
+    #[test]
+    fn field_threshold_spec_splits_on_the_last_equals() {
+        let (key, th) = parse_field_threshold("odd=name=0.1,0.2").unwrap();
+        assert_eq!(key, "odd=name");
+        assert_eq!(th.red, 0.2);
+    }
+
+    #[test]
+    fn field_threshold_spec_rejects_malformed_input() {
+        for bad in [
+            "verification time",          // no '='
+            "verification time=0.4",      // no ','
+            "=0.4,0.6",                   // empty key
+            "verification time=abc,0.6",  // not a number
+            "verification time=-0.1,0.6", // negative
+            "verification time=0.6,0.4",  // yellow above red
+        ] {
+            assert!(
+                parse_field_threshold(bad).is_err(),
+                "expected {:?} to be rejected",
+                bad
+            );
+        }
     }
 
     #[test]
