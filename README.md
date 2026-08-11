@@ -11,7 +11,7 @@ Per-crate coverage:
 [![buildkite-cache-manager](https://codecov.io/gh/MinaProtocol/mina-release-toolkit/branch/main/graph/badge.svg?flag=buildkite-cache-manager)](https://codecov.io/gh/MinaProtocol/mina-release-toolkit?flags%5B0%5D=buildkite-cache-manager)
 
 The tools the Mina Protocol release pipeline uses to build, sign, ship,
-and verify packages. Six self-contained components live side-by-side
+and verify packages. Seven self-contained components live side-by-side
 in this repo; this README is a map and pointers — each component's
 own `README.md` is the detailed reference.
 
@@ -21,6 +21,7 @@ own `README.md` is the detailed reference.
 | --- | --- | --- | --- |
 | [`deb-toolkit/`](deb-toolkit/) (submodule) | Rust | Build, sign, verify, and transactionally edit `.deb` packages. Includes the `session` subsystem for hardfork-style mutations. | [README](deb-toolkit/README.md) |
 | [`release-manager/`](release-manager/) | Rust | Publish artifacts to Debian repos / Docker registries; promote between channels; verify; archive. | [README](release-manager/README.md) |
+| [`mina-ops/`](mina-ops/) | Rust | Read-only inventory across Buildkite, the Debian repos and the Docker registries, joined on the commit. CLI and JSON. | [README](mina-ops/README.md) |
 | [`mina-bench-upload/`](mina-bench-upload/) | Rust | Parse benchmark output (7 formats) and upload to InfluxDB with regression checks. | [README](mina-bench-upload/README.md) |
 | [`buildkite-cache-manager/`](buildkite-cache-manager/) | Rust | Read/write/list/prune Buildkite CI cache on Hetzner shared storage. | [README](buildkite-cache-manager/README.md) |
 | [`deb-s3/`](deb-s3/) (submodule) | Ruby | Manage APT repositories on S3 (upload, delete, verify, repair). Forked from `krobertson/deb-s3`. | [README](deb-s3/README.md) |

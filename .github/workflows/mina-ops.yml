@@ -1,0 +1,100 @@
+name: mina-ops CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'mina-ops/**'
+      # mina-ops depends on release-manager for the naming conventions, so a
+      # change there can break this crate.
+      - 'release-manager/**'
+      - '.github/workflows/mina-ops.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'mina-ops/**'
+      - 'release-manager/**'
+      - '.github/workflows/mina-ops.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        rust: [stable]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ matrix.rust }}
+        components: rustfmt, clippy
+
+    - name: Configure Rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: mina-ops
+        key: ${{ matrix.os }}-${{ matrix.rust }}
+
+    - name: Install system dependencies (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev
+
+    - name: Install system dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install openssl pkg-config
+
+    - name: Check formatting
+      run: |
+        cd mina-ops
+        cargo fmt --all -- --check
+
+    - name: Run Clippy
+      run: |
+        cd mina-ops
+        cargo clippy --all-targets --all-features
+
+    - name: Run tests
+      run: |
+        cd mina-ops
+        cargo test --verbose
+
+  build:
+    name: Build Binary
+    runs-on: ubuntu-latest
+    needs: [test]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Configure Rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: mina-ops
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev
+
+    - name: Build release binary
+      run: |
+        cd mina-ops
+        cargo build --release
