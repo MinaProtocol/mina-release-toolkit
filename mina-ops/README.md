@@ -79,11 +79,36 @@ A version you already know, with no Buildkite call:
 mina-ops artifacts --version 3.2.0-49b523c --channel stable --skip-buildkite
 ```
 
-JSON for scripts and agents:
+JSON for scripts:
 
 ```bash
 mina-ops --json artifacts --commit 8c0c2e6 --repo-path ../../mina
 ```
+
+## As an MCP server
+
+`mina-ops mcp` serves the same queries over MCP on stdin and stdout, so an
+agent can ask what exists for a commit during an incident instead of shelling
+out and parsing text. It inherits the credentials of whoever starts it, so it
+reaches exactly what that person reaches, and it only reads.
+
+```bash
+claude mcp add mina-ops -- /path/to/mina-ops mcp
+```
+
+Two tools are exposed:
+
+| Tool | Answers |
+| --- | --- |
+| `mina_artifacts` | which packages and images exist for a commit or version |
+| `mina_builds` | which Buildkite builds ran for a commit |
+
+Both return the same JSON the CLI prints, `warnings` included, so the agent
+sees what limited the answer.
+
+Set `BUILDKITE_API_TOKEN` in the environment the server starts in, or write it
+to `~/.config/mina-ops/buildkite-token`. Without it the Debian and Docker
+checks still work and the missing token is reported as a warning.
 
 ## How a commit becomes a version
 

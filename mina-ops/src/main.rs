@@ -44,6 +44,8 @@ enum Command {
     Artifacts(ArtifactsArgs),
     /// Buildkite builds for one commit
     Builds(BuildsArgs),
+    /// Serve the same queries over MCP on stdin and stdout
+    Mcp,
 }
 
 #[derive(clap::Args)]
@@ -120,6 +122,14 @@ async fn main() {
 
 async fn run(cli: &Cli) -> OpsResult<()> {
     let (registry, source) = Registry::load(cli.config.as_deref())?;
+
+    // The MCP transport owns stdout, so it is served before anything can
+    // print, and it selects its project per call rather than up front.
+    if matches!(cli.command, Command::Mcp) {
+        eprintln!("mina-ops MCP server on stdio; registry: {source}");
+        return mina_ops::mcp::serve(registry).await;
+    }
+
     let project = registry.project(&cli.project)?;
 
     match &cli.command {
@@ -177,6 +187,7 @@ async fn run(cli: &Cli) -> OpsResult<()> {
             let inventory = inventory::collect(&cli.project, project, &query).await?;
             emit(cli, &inventory)?;
         }
+        Command::Mcp => unreachable!("served before the project is resolved"),
     }
 
     if !cli.json {

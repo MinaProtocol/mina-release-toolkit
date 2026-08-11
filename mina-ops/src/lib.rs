@@ -13,5 +13,6 @@ pub mod config;
 pub mod error;
 pub mod git;
 pub mod inventory;
+pub mod mcp;
 pub mod model;
 pub mod report;
