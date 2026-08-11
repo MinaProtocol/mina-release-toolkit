@@ -75,6 +75,8 @@ check still resolves against the existing samples.
 | `--check-regression`     | off     | Run the historical-mean regression check.                                                      |
 | `--yellow <fraction>`    | `0.10`  | Fraction over mean above which we warn.                                                        |
 | `--red <fraction>`       | `0.20`  | Fraction over mean above which we fail the build.                                              |
+| `--field-threshold <k=y,r>` | —    | Override `--yellow`/`--red` for one metric. Repeatable. See below.                             |
+| `--exclude-field <key>`  | —       | Never gate the build on this metric. Repeatable. It is still parsed and uploaded.              |
 | `--min-samples <n>`      | `10`    | Minimum historical samples required before the check runs.                                     |
 | `--dry-run`              | off     | Parse + log what would be sent, but don't hit InfluxDB.                                        |
 
@@ -117,6 +119,53 @@ The Python tool had a long-standing bug at `bench.py:137` —
 `isclose(value + red_threshold, average)` — that silently masked
 regressions. The Rust check uses the correct `value > mean * (1 + threshold)`
 comparison.
+
+### Per-metric thresholds
+
+One threshold cannot fit a benchmark whose fields differ in run-to-run
+variance. The snark bench produces both kinds on every run. Measured over
+four consecutive `develop` nightlies, 17 permutations each:
+
+| field               | run-to-run spread of the same permutation | red verdicts at `red=0.20` |
+| ------------------- | ----------------------------------------- | -------------------------- |
+| `value`             | median 1.0%, max 1.9%                     | 0 / 68                     |
+| `verification time` | median 30.4%, max 87%                     | 16 / 68 (24%)              |
+
+None of those 16 was a regression — the median `current / mean` was 1.06,
+i.e. sitting on the historical mean. But with 17 permutations checked
+independently, a 24% per-sample trip rate is a **99% chance of failing the
+build every night** on noise alone. Raising the global `--red` to cover
+`verification time` would drop `value` from a 20% gate to a 60% one and
+lose the check that works.
+
+So pick the threshold per metric:
+
+```bash
+mina-bench-upload --format snark --branch develop --check-regression \
+  --field-threshold 'verification time=0.4,0.6'
+```
+
+A key is matched whole, first as `<measurement>.<field>` and then as
+`<field>`:
+
+* `'verification time=0.4,0.6'` — that field on **every** measurement.
+  One key covers all 17 snark permutations.
+* `'SSS.verification time=0.4,0.6'` — one permutation only. Takes
+  precedence over the bare field name.
+
+The key is never split on `.`, so measurements whose names contain dots
+(`Zkapp_account_update.add`) work as written:
+`'Zkapp_account_update.add.avg_time_ms=0.5,0.9'`.
+
+To keep a metric visible in InfluxDB without ever failing the build:
+
+```bash
+mina-bench-upload ... --exclude-field 'verification time'
+```
+
+A malformed `--field-threshold` exits 4 rather than falling back to the
+global value — otherwise a typo would silently gate the build at a
+threshold nobody chose.
 
 ## Development
 

@@ -11,7 +11,7 @@ use mina_bench_upload::parse::{
     janestreet::JaneStreetParser, ledger_apply::LedgerApplyParser, snark::SnarkParser,
     zkapp::ZkappParser, Parser,
 };
-use mina_bench_upload::regression::{self, Thresholds};
+use mina_bench_upload::regression::{self, ThresholdTable, Thresholds};
 
 /// Exit codes — stable contract for callers in dhall/bash.
 const EXIT_OK: u8 = 0;
@@ -86,6 +86,24 @@ struct Cli {
     #[arg(long, default_value_t = 0.20)]
     red: f64,
 
+    /// Override `--yellow`/`--red` for one metric. Repeatable.
+    ///
+    /// `<key>=<yellow>,<red>`, where the key is either a field name
+    /// (`'verification time=0.4,0.6'`, applying to that field on every
+    /// measurement) or a fully qualified `<measurement>.<field>`
+    /// (`'SSS.verification time=0.4,0.6'`), which takes precedence.
+    /// Use it when fields of the same benchmark have different
+    /// run-to-run variance and so cannot share one threshold.
+    #[arg(long = "field-threshold", value_name = "KEY=YELLOW,RED")]
+    field_thresholds: Vec<String>,
+
+    /// Exclude a metric from the regression gate. Repeatable, same key
+    /// form as `--field-threshold`. The metric is still parsed and
+    /// uploaded, so its trend stays visible; it just never fails the
+    /// build.
+    #[arg(long = "exclude-field", value_name = "KEY")]
+    exclude_fields: Vec<String>,
+
     /// Minimum number of historical samples required before the
     /// regression check is meaningful. Below this, the check skips
     /// with a warning.
@@ -120,13 +138,13 @@ async fn run(cli: Cli) -> u8 {
         Err(code) => return code,
     };
 
-    let thresholds = Thresholds {
-        yellow: cli.yellow,
-        red: cli.red,
+    let thresholds = match build_threshold_table(&cli) {
+        Ok(t) => t,
+        Err(code) => return code,
     };
 
     let saw_red = if cli.check_regression {
-        run_regression_phase(&cli, cfg.as_ref(), &records, thresholds).await
+        run_regression_phase(&cli, cfg.as_ref(), &records, &thresholds).await
     } else {
         false
     };
@@ -168,6 +186,40 @@ fn read_and_parse(cli: &Cli) -> Result<Vec<parse::BenchmarkRecord>, u8> {
     Ok(records)
 }
 
+/// Build the metric → thresholds table from the global `--yellow`/`--red`
+/// plus any `--field-threshold` / `--exclude-field` overrides. A
+/// malformed override is a configuration error: silently ignoring it
+/// would leave the build gated at a threshold the caller did not ask for.
+fn build_threshold_table(cli: &Cli) -> Result<ThresholdTable, u8> {
+    let mut table = ThresholdTable::new(Thresholds {
+        yellow: cli.yellow,
+        red: cli.red,
+    });
+    for spec in &cli.field_thresholds {
+        let (key, thresholds) = regression::parse_field_threshold(spec).map_err(|e| {
+            log::error!("Invalid --field-threshold: {:#}", e);
+            EXIT_CONFIG_ERROR
+        })?;
+        log::info!(
+            "threshold override for {:?}: yellow=+{:.0}%, red=+{:.0}%",
+            key,
+            thresholds.yellow * 100.0,
+            thresholds.red * 100.0
+        );
+        table = table.with_override(key, thresholds);
+    }
+    for key in &cli.exclude_fields {
+        let key = key.trim();
+        if key.is_empty() {
+            log::error!("Invalid --exclude-field: empty metric key");
+            return Err(EXIT_CONFIG_ERROR);
+        }
+        log::info!("{:?} excluded from the regression gate", key);
+        table = table.with_exclusion(key);
+    }
+    Ok(table)
+}
+
 /// Load InfluxDB env-var config when the chosen flags require it.
 /// Returns `Ok(None)` when no upload / regression check is requested
 /// (or when `--dry-run` short-circuits the network); returns an exit
@@ -189,15 +241,15 @@ async fn run_regression_phase(
     cli: &Cli,
     cfg: Option<&InfluxConfig>,
     records: &[parse::BenchmarkRecord],
-    thresholds: Thresholds,
+    thresholds: &ThresholdTable,
 ) -> bool {
     if cli.dry_run {
         log::info!(
-            "[dry-run] would check regression: {} record(s) against last {} samples (yellow=+{:.0}%, red=+{:.0}%)",
+            "[dry-run] would check regression: {} record(s) against last {} samples (default yellow=+{:.0}%, red=+{:.0}%)",
             records.len(),
             cli.min_samples,
-            thresholds.yellow * 100.0,
-            thresholds.red * 100.0
+            cli.yellow * 100.0,
+            cli.red * 100.0
         );
         return false;
     }
@@ -280,12 +332,16 @@ async fn run_regression_checks(
     records: &[parse::BenchmarkRecord],
     baseline: &[String],
     min_samples: usize,
-    thresholds: Thresholds,
+    thresholds: &ThresholdTable,
 ) -> bool {
     let mut saw_red = false;
     for record in records {
         for (field_name, field_value) in &record.fields {
             let label = format!("{}.{}", record.measurement, field_name);
+            let Some(field_thresholds) = thresholds.resolve(&record.measurement, field_name) else {
+                log::info!("  skip  {}: excluded from the regression gate", label);
+                continue;
+            };
             match regression::check(
                 cfg,
                 baseline,
@@ -293,7 +349,7 @@ async fn run_regression_checks(
                 field_name,
                 field_value.as_f64(),
                 min_samples,
-                thresholds,
+                field_thresholds,
             )
             .await
             {
