@@ -9,6 +9,7 @@ Per-crate coverage:
 [![release-manager](https://codecov.io/gh/MinaProtocol/mina-release-toolkit/branch/main/graph/badge.svg?flag=release-manager)](https://codecov.io/gh/MinaProtocol/mina-release-toolkit?flags%5B0%5D=release-manager)
 [![mina-bench-upload](https://codecov.io/gh/MinaProtocol/mina-release-toolkit/branch/main/graph/badge.svg?flag=mina-bench-upload)](https://codecov.io/gh/MinaProtocol/mina-release-toolkit?flags%5B0%5D=mina-bench-upload)
 [![buildkite-cache-manager](https://codecov.io/gh/MinaProtocol/mina-release-toolkit/branch/main/graph/badge.svg?flag=buildkite-cache-manager)](https://codecov.io/gh/MinaProtocol/mina-release-toolkit?flags%5B0%5D=buildkite-cache-manager)
+[![mina-ops](https://codecov.io/gh/MinaProtocol/mina-release-toolkit/branch/main/graph/badge.svg?flag=mina-ops)](https://codecov.io/gh/MinaProtocol/mina-release-toolkit?flags%5B0%5D=mina-ops)
 
 The tools the Mina Protocol release pipeline uses to build, sign, ship,
 and verify packages. Seven self-contained components live side-by-side
