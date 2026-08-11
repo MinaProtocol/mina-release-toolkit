@@ -224,6 +224,118 @@ pub fn parse_string_list(input: &str) -> Vec<String> {
         .collect()
 }
 
+/// The network a release channel publishes for. `alpha` carries devnet builds,
+/// everything else carries mainnet.
+pub fn network_for_channel(channel: &str) -> String {
+    match channel {
+        "alpha" => "devnet",
+        "beta" | "stable" => "mainnet",
+        _ => "mainnet",
+    }
+    .to_string()
+}
+
+/// Debian repositories a release channel publishes into.
+pub fn buckets_for_channel(channel: &str) -> Vec<String> {
+    match channel {
+        "alpha" | "beta" => vec![
+            "unstable.apt.packages.minaprotocol.com".to_string(),
+            "packages.o1test.net".to_string(),
+        ],
+        "stable" => vec![
+            "stable.apt.packages.minaprotocol.com".to_string(),
+            "packages.o1test.net".to_string(),
+        ],
+        _ => vec!["packages.o1test.net".to_string()],
+    }
+}
+
+/// Architectures CI builds for a given Debian codename. Only the newer
+/// codenames get an arm64 build.
+pub fn archs_for_codename(codename: &str) -> &'static [&'static str] {
+    match codename {
+        "bookworm" | "noble" => &["amd64", "arm64"],
+        _ => &["amd64"],
+    }
+}
+
+/// Whether an artifact is also published as a Docker image. Some artifacts are
+/// Debian-only.
+pub fn artifact_has_docker(artifact: &str) -> bool {
+    !matches!(
+        artifact,
+        "mina-logproc"
+            | "minimina"
+            | "mina-config"
+            | "mina-automode"
+            | "mina-prefork"
+            | "mina-postfork"
+            | "mina-postfork-mesa"
+            | "mina-prefork-mesa"
+    )
+}
+
+/// One Debian package that publishing `artifact` is expected to produce.
+///
+/// An artifact does not map one-to-one onto a package: `mina-config` is
+/// architecture-independent, `mina-archive` publishes both a network-suffixed
+/// and an unsuffixed package outside devnet, and `mina-logproc` carries no
+/// suffix at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExpectedDeb {
+    pub package: String,
+    pub arch: String,
+}
+
+/// Debian packages `artifact` is expected to publish for one architecture.
+///
+/// Returns an empty vector for artifacts this tool does not model, so callers
+/// can distinguish "nothing expected" from "expected and missing" instead of
+/// silently counting an unknown artifact as a pass.
+pub fn expected_debian_packages(
+    artifact: &str,
+    arch: &str,
+    network: &str,
+    profile: Option<&str>,
+) -> Vec<ExpectedDeb> {
+    let one = |package: String, arch: &str| ExpectedDeb {
+        package,
+        arch: arch.to_string(),
+    };
+    match artifact {
+        // Published under the plain artifact name, no suffix.
+        "mina-logproc" | "minimina" => vec![one(artifact.to_string(), arch)],
+        // Architecture-independent.
+        "mina-config" => vec![one(
+            get_artifact_with_suffix(artifact, Some(network), None),
+            "all",
+        )],
+        // Outside devnet the unsuffixed package is published as well.
+        "mina-archive" => {
+            let mut out = vec![one(
+                get_artifact_with_suffix(artifact, Some(network), None),
+                arch,
+            )];
+            if network != "devnet" {
+                out.push(one(artifact.to_string(), arch));
+            }
+            out
+        }
+        // Network suffix and, where it applies, the build profile.
+        "mina-daemon" | "mina-rosetta" | "mina-generic" | "rosetta-generic"
+        | "mina-postfork-mesa" | "mina-prefork-mesa" => vec![one(
+            get_artifact_with_suffix(artifact, Some(network), profile),
+            arch,
+        )],
+        // Network suffix only.
+        "mina-automode" | "mina-prefork" | "mina-postfork" => vec![one(
+            get_artifact_with_suffix(artifact, Some(network), None),
+            arch,
+        )],
+        _ => Vec::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -396,5 +508,56 @@ mod tests {
         assert_eq!(artifacts[1], Artifact::MinaArchive);
         assert_eq!(artifacts[2], Artifact::MinaGeneric);
         assert_eq!(artifacts[3], Artifact::Minimina);
+    }
+
+    fn names(expected: &[ExpectedDeb]) -> Vec<(&str, &str)> {
+        expected
+            .iter()
+            .map(|e| (e.package.as_str(), e.arch.as_str()))
+            .collect()
+    }
+
+    #[test]
+    fn expected_debs_unsuffixed_artifacts() {
+        let out = expected_debian_packages("mina-logproc", "amd64", "devnet", None);
+        assert_eq!(names(&out), vec![("mina-logproc", "amd64")]);
+    }
+
+    #[test]
+    fn expected_debs_config_is_arch_independent() {
+        let out = expected_debian_packages("mina-config", "arm64", "devnet", None);
+        assert_eq!(names(&out), vec![("mina-devnet-config", "all")]);
+    }
+
+    #[test]
+    fn expected_debs_archive_adds_unsuffixed_outside_devnet() {
+        let devnet = expected_debian_packages("mina-archive", "amd64", "devnet", None);
+        assert_eq!(names(&devnet), vec![("mina-archive-devnet", "amd64")]);
+
+        let mainnet = expected_debian_packages("mina-archive", "amd64", "mainnet", None);
+        assert_eq!(
+            names(&mainnet),
+            vec![("mina-archive-mainnet", "amd64"), ("mina-archive", "amd64")]
+        );
+    }
+
+    #[test]
+    fn expected_debs_daemon_honours_profile() {
+        let plain = expected_debian_packages("mina-daemon", "amd64", "devnet", None);
+        assert_eq!(names(&plain), vec![("mina-devnet", "amd64")]);
+
+        let lightnet = expected_debian_packages("mina-daemon", "amd64", "devnet", Some("lightnet"));
+        assert_eq!(names(&lightnet), vec![("mina-devnet-lightnet", "amd64")]);
+    }
+
+    #[test]
+    fn expected_debs_ignores_profile_for_automode() {
+        let out = expected_debian_packages("mina-automode", "amd64", "devnet", Some("lightnet"));
+        assert_eq!(names(&out), vec![("mina-devnet-automode", "amd64")]);
+    }
+
+    #[test]
+    fn expected_debs_unknown_artifact_expects_nothing() {
+        assert!(expected_debian_packages("not-an-artifact", "amd64", "devnet", None).is_empty());
     }
 }

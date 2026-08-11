@@ -1,0 +1,39 @@
+# Project registry for mina-ops.
+#
+# This file is also compiled into the binary as the built-in default, so
+# mina-ops works with no configuration at all. Copy it to
+# ~/.config/mina-ops/projects.yaml to change it, or point MINA_OPS_CONFIG at
+# your own copy.
+#
+# Keep internal hosts out of this file. It lives in a public repository. Put
+# anything that is not already public in your own copy.
+
+projects:
+  mina:
+    repo: MinaProtocol/mina
+    buildkite:
+      org: o-1-labs-2
+      # Pipelines listed first are shown first. Builds from pipelines not
+      # listed here are still reported.
+      pipelines:
+        - mina-o-1-labs
+        - mina-nightly
+        - mina-pr-gating
+    apt:
+      region: us-west-2
+    docker:
+      gcr: gcr.io/o1labs-192920
+      docker_io: docker.io/minaprotocol
+    defaults:
+      channel: unstable
+      artifacts:
+        - mina-daemon
+        - mina-archive
+        - mina-rosetta
+        - mina-logproc
+      codenames:
+        - bullseye
+        - bookworm
+        - noble
+      # Build profile: null, "lightnet" or "instrumented".
+      profile: null

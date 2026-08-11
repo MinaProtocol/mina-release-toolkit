@@ -7,6 +7,7 @@ on:
       - 'release-manager/**'
       - 'mina-bench-upload/**'
       - 'buildkite-cache-manager/**'
+      - 'mina-ops/**'
       - '.github/workflows/coverage.yml'
   pull_request:
     branches: [ main ]
@@ -14,6 +15,7 @@ on:
       - 'release-manager/**'
       - 'mina-bench-upload/**'
       - 'buildkite-cache-manager/**'
+      - 'mina-ops/**'
       - '.github/workflows/coverage.yml'
 
 env:
@@ -33,7 +35,7 @@ jobs:
       # doesn't poison the others, and so Codecov gets per-flag reports.
       fail-fast: false
       matrix:
-        crate: [release-manager, mina-bench-upload, buildkite-cache-manager]
+        crate: [release-manager, mina-bench-upload, buildkite-cache-manager, mina-ops]
 
     steps:
       - name: Checkout
