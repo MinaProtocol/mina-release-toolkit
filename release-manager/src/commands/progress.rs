@@ -1,6 +1,9 @@
 use std::process::Command;
 
-use crate::artifacts::{get_arch_suffix, get_artifact_with_suffix, get_suffix, parse_string_list};
+use crate::artifacts::{
+    archs_for_codename, artifact_has_docker, buckets_for_channel, expected_debian_packages,
+    get_arch_suffix, get_suffix, network_for_channel, parse_string_list,
+};
 use crate::cli::ProgressArgs;
 use crate::errors::ManagerResult;
 
@@ -113,50 +116,6 @@ fn print_header() {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 }
 
-fn network_for_channel(channel: &str) -> String {
-    match channel {
-        "alpha" => "devnet",
-        "beta" | "stable" => "mainnet",
-        _ => "mainnet",
-    }
-    .to_string()
-}
-
-fn buckets_for_channel(channel: &str) -> Vec<String> {
-    match channel {
-        "alpha" | "beta" => vec![
-            "unstable.apt.packages.minaprotocol.com".to_string(),
-            "packages.o1test.net".to_string(),
-        ],
-        "stable" => vec![
-            "stable.apt.packages.minaprotocol.com".to_string(),
-            "packages.o1test.net".to_string(),
-        ],
-        _ => vec!["packages.o1test.net".to_string()],
-    }
-}
-
-fn archs_for_codename(codename: &str) -> &'static [&'static str] {
-    match codename {
-        "bookworm" | "noble" => &["amd64", "arm64"],
-        _ => &["amd64"],
-    }
-}
-
-fn artifact_has_docker(artifact: &str) -> bool {
-    !matches!(
-        artifact,
-        "mina-logproc"
-            | "minimina"
-            | "mina-config"
-            | "mina-automode"
-            | "mina-prefork"
-            | "mina-postfork"
-            | "mina-postfork-mesa"
-            | "mina-prefork-mesa"
-    )
-}
-
 fn deb_s3_list(bucket: &str, component: &str, codename: &str, arch: &str) -> String {
     let output = Command::new("deb-s3")
         .args([
@@ -198,32 +157,15 @@ fn check_artifact_in_debs3(
     profile: Option<&str>,
     totals: &mut Totals,
 ) {
-    match artifact {
-        "mina-logproc" | "minimina" => {
-            check_one(artifact, version, arch, available, totals);
-        }
-        "mina-archive" => {
-            let with_suffix = get_artifact_with_suffix(artifact, Some(network), None);
-            check_one(&with_suffix, version, arch, available, totals);
-            // For non-devnet, also check unsuffixed package name
-            if network != "devnet" {
-                check_one(artifact, version, arch, available, totals);
-            }
-        }
-        "mina-config" => {
-            let with_suffix = get_artifact_with_suffix(artifact, Some(network), None);
-            check_one(&with_suffix, version, "all", available, totals);
-        }
-        "mina-daemon" | "mina-rosetta" | "mina-generic" | "rosetta-generic"
-        | "mina-postfork-mesa" | "mina-prefork-mesa" => {
-            let with_suffix = get_artifact_with_suffix(artifact, Some(network), profile);
-            check_one(&with_suffix, version, arch, available, totals);
-        }
-        "mina-automode" | "mina-prefork" | "mina-postfork" => {
-            let with_suffix = get_artifact_with_suffix(artifact, Some(network), None);
-            check_one(&with_suffix, version, arch, available, totals);
-        }
-        _ => { /* unknown artifact — silently ignore */ }
+    // Unknown artifacts yield no expectations, so they are silently ignored.
+    for expected in expected_debian_packages(artifact, arch, network, profile) {
+        check_one(
+            &expected.package,
+            version,
+            &expected.arch,
+            available,
+            totals,
+        );
     }
 }
 

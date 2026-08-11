@@ -2,20 +2,10 @@ use clap::{Parser, Subcommand};
 use colored::*;
 use std::env;
 
-mod artifacts;
-mod cli;
-mod commands;
-mod debian_publish;
-mod docker_promote;
-mod errors;
-mod process;
-mod reversion;
-mod storage;
-mod utils;
-mod verification;
-
-use cli::*;
-use errors::ManagerResult;
+use release_manager::cli::*;
+use release_manager::commands;
+use release_manager::errors::ManagerResult;
+use release_manager::utils;
 
 #[derive(Parser)]
 #[command(name = "release-manager")]
