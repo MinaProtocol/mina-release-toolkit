@@ -32,6 +32,13 @@ pub struct BuildkiteConfig {
     pub org: String,
     #[serde(default)]
     pub pipelines: Vec<String>,
+    /// Pipeline `mina-ops nightly` reports on when none is named.
+    #[serde(default)]
+    pub nightly_pipeline: Option<String>,
+    /// Branch filter for that pipeline. `None` means every branch, which
+    /// mixes release branches into the comparison.
+    #[serde(default)]
+    pub nightly_branch: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -122,6 +122,9 @@ pub struct Inventory {
     /// False when only builds were asked for. Consumers use it to tell "no
     /// packages are published" apart from "packages were not looked at".
     pub artifact_coverage_requested: bool,
+    /// Pull requests containing the commit — who owns the change.
+    #[serde(default)]
+    pub pull_requests: Vec<crate::adapters::github::PullRequest>,
     pub builds: Vec<BuildSummary>,
     pub debians: Vec<DebianEntry>,
     pub dockers: Vec<DockerEntry>,

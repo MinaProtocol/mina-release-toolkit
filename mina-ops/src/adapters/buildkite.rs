@@ -49,6 +49,70 @@ struct ApiArtifact {
     state: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct ApiPipelineBuild {
+    number: u64,
+    state: String,
+    branch: String,
+    commit: String,
+    message: Option<String>,
+    created_at: Option<String>,
+    web_url: String,
+    #[serde(default)]
+    jobs: Vec<ApiJob>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiJob {
+    name: Option<String>,
+    step_key: Option<String>,
+    state: Option<String>,
+    #[serde(default)]
+    soft_failed: bool,
+    #[serde(default)]
+    retried: bool,
+    web_url: Option<String>,
+    exit_status: Option<i64>,
+    parallel_group_index: Option<u64>,
+}
+
+/// One build of a named pipeline, with its jobs.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PipelineBuild {
+    pub number: u64,
+    pub state: String,
+    pub branch: String,
+    pub commit: String,
+    pub message: Option<String>,
+    pub created_at: Option<String>,
+    pub web_url: String,
+    pub jobs: Vec<JobSummary>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct JobSummary {
+    /// Stable identity across builds: the step key when the pipeline defines
+    /// one, otherwise the label. Parallel jobs carry their index, so one
+    /// shard failing is not confused with another.
+    pub key: String,
+    pub name: String,
+    pub state: String,
+    /// A soft-failed job does not fail its build. It is still a real failure
+    /// and is reported, but separately.
+    pub soft_failed: bool,
+    /// True on the superseded attempt of a retried job. Those are excluded
+    /// from failure counts: the retry's outcome is the one that counts.
+    pub retried: bool,
+    pub web_url: Option<String>,
+    pub exit_status: Option<i64>,
+}
+
+impl JobSummary {
+    pub fn has_failed(&self) -> bool {
+        !self.retried && matches!(self.state.as_str(), "failed" | "broken" | "waiting_failed")
+    }
+}
+
 pub fn token_file_path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("~/.config"))
@@ -129,6 +193,32 @@ impl BuildkiteClient {
             self.api_root, self.org, commit
         );
         let builds: Vec<ApiBuild> = self.get(&url).await?;
+        Ok(builds.into_iter().map(Into::into).collect())
+    }
+
+    /// The most recent builds of one pipeline, with their jobs.
+    ///
+    /// Buildkite returns jobs inline, so `count` builds and every job in them
+    /// cost a single request.
+    pub async fn recent_pipeline_builds(
+        &self,
+        pipeline: &str,
+        branch: Option<&str>,
+        count: usize,
+    ) -> OpsResult<Vec<PipelineBuild>> {
+        let branch_filter = match branch {
+            Some(branch) => format!("&branch={branch}"),
+            None => String::new(),
+        };
+        let url = format!(
+            "{}/organizations/{}/pipelines/{}/builds?per_page={}{}",
+            self.api_root,
+            self.org,
+            pipeline,
+            count.clamp(1, 100),
+            branch_filter
+        );
+        let builds: Vec<ApiPipelineBuild> = self.get(&url).await?;
         Ok(builds.into_iter().map(Into::into).collect())
     }
 
@@ -221,6 +311,49 @@ impl From<ApiBuild> for BuildSummary {
             web_url: build.web_url,
             artifact_count: None,
             versions: Vec::new(),
+        }
+    }
+}
+
+impl From<ApiPipelineBuild> for PipelineBuild {
+    fn from(build: ApiPipelineBuild) -> Self {
+        PipelineBuild {
+            number: build.number,
+            state: build.state,
+            branch: build.branch,
+            commit: build.commit,
+            message: build.message.map(|m| first_line(&m)),
+            created_at: build.created_at,
+            web_url: build.web_url,
+            jobs: build.jobs.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<ApiJob> for JobSummary {
+    fn from(job: ApiJob) -> Self {
+        let label = job
+            .name
+            .clone()
+            .or_else(|| job.step_key.clone())
+            .unwrap_or_else(|| "(unnamed job)".to_string());
+
+        // Prefer the step key: labels carry emoji and wording that change
+        // between builds, which would make a long-standing failure look new.
+        let base = job.step_key.clone().unwrap_or_else(|| label.clone());
+        let key = match job.parallel_group_index {
+            Some(index) => format!("{base}#{index}"),
+            None => base,
+        };
+
+        JobSummary {
+            key,
+            name: label,
+            state: job.state.unwrap_or_else(|| "unknown".to_string()),
+            soft_failed: job.soft_failed,
+            retried: job.retried,
+            web_url: job.web_url,
+            exit_status: job.exit_status,
         }
     }
 }

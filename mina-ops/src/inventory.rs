@@ -16,6 +16,7 @@ use release_manager::artifacts::{
 use crate::adapters::apt::{AptClient, ListingKey, Listings};
 use crate::adapters::buildkite::{token_from_environment, BuildkiteClient};
 use crate::adapters::docker::DockerClient;
+use crate::adapters::github::GithubClient;
 use crate::config::Project;
 use crate::error::{OpsError, OpsResult};
 use crate::git;
@@ -38,6 +39,7 @@ pub struct InventoryQuery {
     pub skip_buildkite: bool,
     pub skip_debian: bool,
     pub skip_docker: bool,
+    pub skip_github: bool,
 }
 
 impl InventoryQuery {
@@ -62,6 +64,7 @@ pub async fn collect(
     let profile = query.profile.as_deref();
 
     let builds = collect_builds(project, query, &mut warnings).await;
+    let pull_requests = collect_pull_requests(project, query, &mut warnings).await;
 
     let listings = if query.skip_debian {
         Listings::default()
@@ -107,6 +110,7 @@ pub async fn collect(
         network,
         profile: query.profile.clone(),
         artifact_coverage_requested: !builds_only,
+        pull_requests,
         builds,
         debians,
         dockers,
@@ -170,6 +174,33 @@ async fn collect_builds(
     warnings.extend(artifact_warnings);
 
     builds
+}
+
+async fn collect_pull_requests(
+    project: &Project,
+    query: &InventoryQuery,
+    warnings: &mut Vec<String>,
+) -> Vec<crate::adapters::github::PullRequest> {
+    let Some(commit) = query.commit.as_deref() else {
+        return Vec::new();
+    };
+    if query.skip_github {
+        return Vec::new();
+    }
+
+    let client = GithubClient::new();
+    if let Err(reason) = client.available().await {
+        warnings.push(format!("pull requests not resolved: {reason}"));
+        return Vec::new();
+    }
+
+    match client.pulls_for_commit(&project.repo, commit).await {
+        Ok(pulls) => pulls,
+        Err(e) => {
+            warnings.push(e.to_string());
+            Vec::new()
+        }
+    }
 }
 
 /// Every (bucket, component, codename, arch) listing the query needs.
@@ -482,6 +513,7 @@ mod tests {
             skip_buildkite: false,
             skip_debian: false,
             skip_docker: false,
+            skip_github: true,
         }
     }
 
