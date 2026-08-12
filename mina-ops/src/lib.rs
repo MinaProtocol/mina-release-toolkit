@@ -15,4 +15,5 @@ pub mod git;
 pub mod inventory;
 pub mod mcp;
 pub mod model;
+pub mod nightly;
 pub mod report;

@@ -6,6 +6,7 @@
 use colored::*;
 
 use crate::model::{Inventory, Presence, Totals, VersionSource};
+use crate::nightly::{ClassifiedFailure, NightlyReport, Trend};
 
 pub fn render(inventory: &Inventory) -> String {
     let mut out = String::new();
@@ -29,6 +30,19 @@ pub fn render(inventory: &Inventory) -> String {
             "Channel: {} · network {}\n",
             inventory.channel, inventory.network
         ));
+    }
+
+    if !inventory.pull_requests.is_empty() {
+        out.push_str("\nPull requests\n");
+        for pr in &inventory.pull_requests {
+            out.push_str(&format!(
+                "  #{} {} ({}, {})\n",
+                pr.number,
+                truncate(&pr.title, 60),
+                pr.state,
+                pr.author.as_deref().unwrap_or("unknown author")
+            ));
+        }
     }
 
     if !inventory.builds.is_empty() {
@@ -104,6 +118,117 @@ pub fn render(inventory: &Inventory) -> String {
 
     out.push('\n');
     out
+}
+
+pub fn render_nightly(report: &NightlyReport) -> String {
+    let mut out = String::new();
+
+    out.push_str(&format!("\nProject:  {}\n", report.project));
+    out.push_str(&format!("Pipeline: {}", report.pipeline));
+    match &report.branch {
+        Some(branch) => out.push_str(&format!(" · branch {branch}\n")),
+        None => out.push_str(&format!(" · {}\n", "every branch".yellow())),
+    }
+
+    if !report.builds.is_empty() {
+        out.push_str("\nBuilds\n");
+        for build in &report.builds {
+            out.push_str(&format!(
+                "  #{:<7} {:<10} {:>3} failing of {:<4} {} {}\n",
+                build.number,
+                colour_state(&build.state),
+                build.failures.len(),
+                build.job_count,
+                &build.commit[..build.commit.len().min(9)],
+                build
+                    .created_at
+                    .as_deref()
+                    .map(|d| d.split('T').next().unwrap_or(d).to_string())
+                    .unwrap_or_default()
+                    .dimmed()
+            ));
+            for pr in &build.pull_requests {
+                out.push_str(&format!(
+                    "      #{} {} ({}, {})\n",
+                    pr.number,
+                    truncate(&pr.title, 60),
+                    pr.state,
+                    pr.author.as_deref().unwrap_or("unknown author")
+                ));
+            }
+        }
+    }
+
+    let newest = report.builds.first();
+    if let Some(newest) = newest {
+        let new_failures = report.new_failures();
+        out.push_str(&format!(
+            "\nNew in #{} ({})\n",
+            newest.number,
+            new_failures.len()
+        ));
+        if new_failures.is_empty() {
+            out.push_str(&format!("  {}\n", "nothing new".green()));
+        }
+        for failure in new_failures {
+            out.push_str(&format!("  {}\n", describe_failure(failure)));
+        }
+
+        let persistent = report.persistent_failures();
+        if !persistent.is_empty() {
+            out.push_str(&format!("\nAlready failing before #{}\n", newest.number));
+            for failure in persistent {
+                out.push_str(&format!("  {}\n", describe_failure(failure)));
+            }
+        }
+
+        let unknown: Vec<_> = report
+            .latest_failures
+            .iter()
+            .filter(|f| f.trend == Trend::Unknown)
+            .collect();
+        if !unknown.is_empty() {
+            out.push_str("\nFailing, with no earlier build to compare against\n");
+            for failure in unknown {
+                out.push_str(&format!("  {}\n", describe_failure(failure)));
+            }
+        }
+    }
+
+    if !report.fixed_since_previous.is_empty() {
+        out.push_str("\nFixed since the previous build\n");
+        for job in &report.fixed_since_previous {
+            out.push_str(&format!("  {} {}\n", "[fixed]".green(), job.name));
+        }
+    }
+
+    if !report.warnings.is_empty() {
+        out.push_str("\nLimits and warnings\n");
+        for warning in &report.warnings {
+            out.push_str(&format!("  {} {}\n", "!".yellow(), warning));
+        }
+    }
+
+    out.push('\n');
+    out
+}
+
+fn describe_failure(failure: &ClassifiedFailure) -> String {
+    let mark = match &failure.trend {
+        Trend::New => "[new]       ".red().to_string(),
+        Trend::Persistent { consecutive } => {
+            format!("[{consecutive} builds] ").yellow().to_string()
+        }
+        Trend::Unknown => "[unknown]   ".yellow().to_string(),
+    };
+    let soft = if failure.job.soft_failed {
+        " (soft failure, does not fail the build)"
+            .dimmed()
+            .to_string()
+    } else {
+        String::new()
+    };
+    format!("{mark}{}{soft}", failure.job.name)
 }
 
 fn describe(source: &VersionSource) -> &'static str {

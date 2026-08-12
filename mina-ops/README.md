@@ -34,6 +34,7 @@ cargo build --release
 | Buildkite | `BUILDKITE_API_TOKEN` or `BUILDKITE_API_ACCESS_TOKEN`, else `~/.config/mina-ops/buildkite-token` | build lookup; scopes `read_builds`, `read_artifacts` |
 | Debian repositories | whatever `deb-s3` and `aws` already use | package listings |
 | Docker registries | whatever `docker` already uses | image presence |
+| GitHub | whatever `gh` already uses (`gh auth login`) | the pull request behind a commit |
 
 A missing tool or credential is reported as `unknown`, never as `missing`. See
 "Honesty" below.
@@ -85,6 +86,49 @@ JSON for scripts:
 mina-ops --json artifacts --commit 8c0c2e6 --repo-path ../../mina
 ```
 
+## Nightly triage
+
+A failing nightly tells you what is red. It does not tell you what is *newly*
+red, which is where triage actually starts.
+
+```bash
+mina-ops nightly --last 3
+```
+
+```
+Builds
+  #1587    failed       5 failing of 99   adfabd713 2026-08-12
+      #19201 restore ci-single-me and add a deploy makefile (merged, dkijania)
+  #1585    failed       6 failing of 101  6616118b6 2026-08-11
+
+New in #1587 (1)
+  [new]       libp2p unit-tests
+
+Already failing before #1587
+  [2 builds] hard fork test - legacy mode
+  [3 builds] Perf: Archive (soft failure, does not fail the build)
+
+Fixed since the previous build
+  [fixed] Hardfork: Package Conversion
+```
+
+Three rules keep the labels honest:
+
+- **Retried attempts do not count.** A job that failed and passed on retry is
+  not a failure; the retry's outcome is the one that counts.
+- **Soft failures are reported and marked.** They do not turn the build red,
+  but they are still regressions, so they are neither hidden nor mixed in with
+  the failures that broke the build.
+- **One build alone yields `unknown`, not `new`.** With nothing to compare
+  against, no failure can honestly be called new.
+
+Jobs are matched across builds by step key rather than by label, because
+labels carry emoji and wording that change between builds — matching on those
+would make a long-standing failure look new.
+
+Without `--branch`, release branches are mixed into the comparison and
+failures appear to come and go. The project default is `develop`.
+
 ## As an MCP server
 
 `mina-ops mcp` serves the same queries over MCP on stdin and stdout, so an
@@ -102,6 +146,7 @@ Two tools are exposed:
 | --- | --- |
 | `mina_artifacts` | which packages and images exist for a commit or version |
 | `mina_builds` | which Buildkite builds ran for a commit |
+| `mina_nightly` | what broke in the newest nightly, and what was already broken |
 
 Both return the same JSON the CLI prints, `warnings` included, so the agent
 sees what limited the answer.

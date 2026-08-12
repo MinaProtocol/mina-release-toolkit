@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 use mina_ops::config::Registry;
 use mina_ops::error::OpsResult;
 use mina_ops::inventory::{self, InventoryQuery};
+use mina_ops::nightly::{self, NightlyQuery};
 use mina_ops::report;
 
 #[derive(Parser)]
@@ -44,6 +45,8 @@ enum Command {
     Artifacts(ArtifactsArgs),
     /// Buildkite builds for one commit
     Builds(BuildsArgs),
+    /// Which nightly jobs are failing, and which of them are new
+    Nightly(NightlyArgs),
     /// Serve the same queries over MCP on stdin and stdout
     Mcp,
 }
@@ -94,6 +97,9 @@ struct ArtifactsArgs {
 
     #[arg(long)]
     skip_docker: bool,
+
+    #[arg(long)]
+    skip_github: bool,
 }
 
 #[derive(clap::Args)]
@@ -109,6 +115,28 @@ struct BuildsArgs {
     /// Builds whose artifacts are listed.
     #[arg(long, default_value_t = 10)]
     max_builds: usize,
+
+    #[arg(long)]
+    skip_github: bool,
+}
+
+#[derive(clap::Args)]
+struct NightlyArgs {
+    /// Pipeline to report on. Defaults to the project's nightly pipeline.
+    #[arg(long)]
+    pipeline: Option<String>,
+
+    /// Branch filter. Without one, release branches are mixed into the
+    /// comparison and failures look like they come and go.
+    #[arg(long)]
+    branch: Option<String>,
+
+    /// How many recent builds to compare.
+    #[arg(long, default_value_t = 3)]
+    last: usize,
+
+    #[arg(long)]
+    skip_github: bool,
 }
 
 #[tokio::main]
@@ -164,6 +192,7 @@ async fn run(cli: &Cli) -> OpsResult<()> {
                 skip_buildkite: args.skip_buildkite,
                 skip_debian: args.skip_debian,
                 skip_docker: args.skip_docker,
+                skip_github: args.skip_github,
             };
 
             let inventory = inventory::collect(&cli.project, project, &query).await?;
@@ -183,9 +212,42 @@ async fn run(cli: &Cli) -> OpsResult<()> {
                 skip_buildkite: false,
                 skip_debian: true,
                 skip_docker: true,
+                skip_github: args.skip_github,
             };
             let inventory = inventory::collect(&cli.project, project, &query).await?;
             emit(cli, &inventory)?;
+        }
+        Command::Nightly(args) => {
+            let pipeline = match args
+                .pipeline
+                .clone()
+                .or_else(|| project.buildkite.nightly_pipeline.clone())
+            {
+                Some(pipeline) => pipeline,
+                None => {
+                    return Err(mina_ops::error::OpsError::Config(
+                        "no nightly pipeline configured for this project; pass --pipeline"
+                            .to_string(),
+                    ))
+                }
+            };
+            let query = NightlyQuery {
+                pipeline,
+                branch: args
+                    .branch
+                    .clone()
+                    .or_else(|| project.buildkite.nightly_branch.clone()),
+                last: args.last,
+                skip_github: args.skip_github,
+            };
+            let report = nightly::collect(&cli.project, project, &query).await?;
+            if cli.json {
+                let json = serde_json::to_string_pretty(&report)
+                    .map_err(|e| mina_ops::error::OpsError::Other(e.to_string()))?;
+                println!("{json}");
+            } else {
+                print!("{}", report::render_nightly(&report));
+            }
         }
         Command::Mcp => unreachable!("served before the project is resolved"),
     }

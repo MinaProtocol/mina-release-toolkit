@@ -17,8 +17,11 @@ projects:
       # listed here are still reported.
       pipelines:
         - mina-o-1-labs
-        - mina-nightly
+        - mina-mainline-branches-nightlies
         - mina-pr-gating
+      # Defaults for `mina-ops nightly`.
+      nightly_pipeline: mina-mainline-branches-nightlies
+      nightly_branch: develop
     apt:
       region: us-west-2
     docker:

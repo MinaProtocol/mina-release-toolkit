@@ -17,6 +17,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use crate::config::{Project, Registry};
 use crate::error::{OpsError, OpsResult};
 use crate::inventory::{self, InventoryQuery};
+use crate::nightly::{self, NightlyQuery};
 
 /// Used when the client does not name a version of its own.
 const DEFAULT_PROTOCOL_VERSION: &str = "2025-06-18";
@@ -119,6 +120,10 @@ async fn handle_tool_call(id: Value, request: &Value, registry: &Registry) -> Va
         Err(e) => return tool_error(id, &e.to_string()),
     };
 
+    if name == "mina_nightly" {
+        return handle_nightly(id, &arguments, &project_name, project).await;
+    }
+
     let query = match name {
         "mina_artifacts" => artifacts_query(&arguments, project),
         "mina_builds" => builds_query(&arguments, project),
@@ -144,6 +149,48 @@ async fn handle_tool_call(id: Value, request: &Value, registry: &Registry) -> Va
         },
         Err(e) => tool_error(id, &e.to_string()),
     }
+}
+
+async fn handle_nightly(
+    id: Value,
+    arguments: &Value,
+    project_name: &str,
+    project: &Project,
+) -> Value {
+    let query = match nightly_query(arguments, project) {
+        Ok(query) => query,
+        Err(e) => return tool_error(id, &e.to_string()),
+    };
+
+    match nightly::collect(project_name, project, &query).await {
+        Ok(report) => match serde_json::to_string_pretty(&report) {
+            Ok(text) => result_response(id, json!({ "content": [text_content(&text)] })),
+            Err(e) => tool_error(id, &format!("cannot serialise the report: {e}")),
+        },
+        Err(e) => tool_error(id, &e.to_string()),
+    }
+}
+
+pub fn nightly_query(arguments: &Value, project: &Project) -> OpsResult<NightlyQuery> {
+    let pipeline = string_arg(arguments, "pipeline")
+        .or_else(|| project.buildkite.nightly_pipeline.clone())
+        .ok_or_else(|| {
+            OpsError::Config(
+                "no nightly pipeline configured for this project; give one".to_string(),
+            )
+        })?;
+
+    Ok(NightlyQuery {
+        pipeline,
+        branch: string_arg(arguments, "branch")
+            .or_else(|| project.buildkite.nightly_branch.clone()),
+        last: arguments
+            .get("last")
+            .and_then(Value::as_u64)
+            .unwrap_or(3)
+            .clamp(1, 20) as usize,
+        skip_github: bool_arg(arguments, "skip_github"),
+    })
 }
 
 fn resolve_query_commit(
@@ -187,6 +234,7 @@ pub fn artifacts_query(arguments: &Value, project: &Project) -> OpsResult<Invent
         skip_buildkite: bool_arg(arguments, "skip_buildkite"),
         skip_debian: bool_arg(arguments, "skip_debian"),
         skip_docker: bool_arg(arguments, "skip_docker"),
+        skip_github: bool_arg(arguments, "skip_github"),
     })
 }
 
@@ -209,6 +257,7 @@ pub fn builds_query(arguments: &Value, project: &Project) -> OpsResult<Inventory
         skip_buildkite: false,
         skip_debian: true,
         skip_docker: true,
+        skip_github: bool_arg(arguments, "skip_github"),
     })
 }
 
@@ -286,6 +335,20 @@ fn tool_definitions() -> Vec<Value> {
                     "project": { "type": "string", "description": "Project in the registry. Defaults to mina." }
                 },
                 "required": ["commit"]
+            }
+        }),
+        json!({
+            "name": "mina_nightly",
+            "description": "Compare the most recent builds of a nightly pipeline and label each failure of the newest build as new, persistent, or unknown. Answers the triage question 'what broke tonight' as opposed to 'what is red'. Retried attempts are excluded; soft failures, which do not turn the build red, are reported and marked.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "pipeline": { "type": "string", "description": "Buildkite pipeline slug. Defaults to the project's nightly pipeline." },
+                    "branch": { "type": "string", "description": "Branch filter. Without one, release branches are mixed into the comparison." },
+                    "last": { "type": "integer", "description": "How many recent builds to compare. Default 3." },
+                    "skip_github": { "type": "boolean", "description": "Skip resolving the pull request behind each build." },
+                    "project": { "type": "string", "description": "Project in the registry. Defaults to mina." }
+                }
             }
         }),
     ]
