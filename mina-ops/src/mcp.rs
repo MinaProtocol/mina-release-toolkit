@@ -235,6 +235,7 @@ pub fn artifacts_query(arguments: &Value, project: &Project) -> OpsResult<Invent
         skip_debian: bool_arg(arguments, "skip_debian"),
         skip_docker: bool_arg(arguments, "skip_docker"),
         skip_github: bool_arg(arguments, "skip_github"),
+        skip_cache: bool_arg(arguments, "skip_cache"),
     })
 }
 
@@ -258,6 +259,7 @@ pub fn builds_query(arguments: &Value, project: &Project) -> OpsResult<Inventory
         skip_debian: true,
         skip_docker: true,
         skip_github: bool_arg(arguments, "skip_github"),
+        skip_cache: bool_arg(arguments, "skip_cache"),
     })
 }
 
@@ -319,6 +321,7 @@ fn tool_definitions() -> Vec<Value> {
                     "skip_buildkite": { "type": "boolean" },
                     "skip_debian": { "type": "boolean" },
                     "skip_docker": { "type": "boolean" },
+                    "skip_cache": { "type": "boolean", "description": "Skip looking in the CI cache, where Mina's .deb files actually live." },
                     "project": { "type": "string", "description": "Project in the registry. Defaults to mina." }
                 }
             }

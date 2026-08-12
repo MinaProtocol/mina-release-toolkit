@@ -65,6 +65,36 @@ pub fn render(inventory: &Inventory) -> String {
         }
     }
 
+    if !inventory.cached_builds.is_empty() {
+        out.push_str("\nCI cache\n");
+        for cached in &inventory.cached_builds {
+            let label = match (cached.pipeline.as_deref(), cached.build_number) {
+                (Some(pipeline), Some(number)) => format!("{pipeline} #{number}"),
+                _ => cached.build_id.clone(),
+            };
+            let summary = match &cached.presence {
+                Presence::Present => format!("{} packages", cached.debians.len()).green(),
+                Presence::Missing => "nothing cached".red(),
+                Presence::Unknown(_) => "unknown".yellow(),
+            };
+            out.push_str(&format!("  {:<34} {}\n", truncate(&label, 34), summary));
+            out.push_str(&format!("      {}\n", cached.build_id.dimmed()));
+            if let Presence::Unknown(reason) = &cached.presence {
+                out.push_str(&format!("      {}\n", reason.dimmed()));
+            }
+            let mut groups: Vec<String> = cached
+                .debians
+                .iter()
+                .map(|d| format!("{}/{}", d.codename, d.arch))
+                .collect();
+            groups.sort();
+            groups.dedup();
+            if !groups.is_empty() {
+                out.push_str(&format!("      {}\n", groups.join(", ").dimmed()));
+            }
+        }
+    }
+
     if !inventory.debians.is_empty() {
         out.push_str("\nDebian packages\n");
         let mut current_group = String::new();
@@ -235,6 +265,7 @@ fn describe(source: &VersionSource) -> &'static str {
     match source {
         VersionSource::Given => "given",
         VersionSource::BuildkiteArtifacts => "from Buildkite artifacts",
+        VersionSource::CiCache => "from the CI cache",
         VersionSource::DebianRepository => "recovered from the Debian repository",
     }
 }
