@@ -24,6 +24,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
+use crate::error::{OpsError, OpsResult};
 use crate::model::Presence;
 
 /// One `.deb` found in the cache.
@@ -35,6 +36,22 @@ pub struct CachedDeb {
     /// Parsed from the filename, which is `<package>_<version>.deb`.
     pub package: Option<String>,
     pub version: Option<String>,
+}
+
+/// One top-level entry in the cache root.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CacheEntry {
+    pub name: String,
+    /// As `du -h` reports it. `None` when the route cannot measure cheaply.
+    pub size: Option<String>,
+    /// Bytes, for sorting. Parsed from the human figure, so it is approximate.
+    pub size_bytes: Option<u64>,
+    /// Last modification, as `ls -lt` reports it.
+    pub modified: Option<String>,
+    /// Whether the name is a Buildkite build UUID. The cache also holds
+    /// `legacy`, `docker-cache` and other shared folders, which are not
+    /// builds and must never be treated as one.
+    pub is_build: bool,
 }
 
 /// What was found under one build's cache folder.
@@ -176,6 +193,111 @@ impl CacheClient {
             CacheRoute::Local(root) => self.local_lookup(root, build_id).await,
             CacheRoute::Ssh(ssh) => self.ssh_lookup(ssh, build_id).await,
         }
+    }
+
+    /// Everything in the cache root, with sizes and dates.
+    ///
+    /// Over ssh this is two commands and about a second for the whole cache,
+    /// however large it is, because `du --max-depth=1` and `ls -lt` each walk
+    /// the top level once.
+    pub async fn list_entries(&self) -> OpsResult<Vec<CacheEntry>> {
+        match &self.route {
+            CacheRoute::Ssh(ssh) => self.ssh_list(ssh).await,
+            CacheRoute::Local(root) => self.local_list(root),
+        }
+    }
+
+    async fn ssh_list(&self, ssh: &SshCache) -> OpsResult<Vec<CacheEntry>> {
+        let root = ssh.root.trim_end_matches('/').to_string();
+
+        let sizes = self
+            .ssh_command(ssh, &format!("du -h --max-depth=1 {root}"))
+            .await?;
+        let dates = self.ssh_command(ssh, &format!("ls -lt {root}")).await?;
+
+        let mut entries = parse_du(&sizes, &root);
+        let modified = parse_ls_times(&dates);
+        for entry in &mut entries {
+            entry.modified = modified.get(&entry.name).cloned();
+        }
+        entries.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes));
+        Ok(entries)
+    }
+
+    fn local_list(&self, root: &Path) -> OpsResult<Vec<CacheEntry>> {
+        // Sizes are deliberately not computed here: walking a multi-terabyte
+        // tree to add a column would be far more expensive than the listing
+        // itself, and `None` says so honestly.
+        let read = std::fs::read_dir(root)
+            .map_err(|e| OpsError::Other(format!("cannot read {}: {e}", root.display())))?;
+        let mut entries: Vec<CacheEntry> = read
+            .flatten()
+            .map(|entry| {
+                let name = entry.file_name().to_string_lossy().to_string();
+                CacheEntry {
+                    is_build: looks_like_build_id(&name),
+                    name,
+                    size: None,
+                    size_bytes: None,
+                    modified: None,
+                }
+            })
+            .collect();
+        entries.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(entries)
+    }
+
+    /// Removes one build's folder. The caller is responsible for the checks;
+    /// this only refuses what is structurally wrong.
+    pub async fn delete_build(&self, build_id: &str) -> OpsResult<()> {
+        if !looks_like_build_id(build_id) {
+            return Err(OpsError::Other(format!(
+                "'{build_id}' is not a build UUID. Only build folders can be removed; shared \
+                 folders such as legacy and docker-cache are never touched."
+            )));
+        }
+
+        match &self.route {
+            CacheRoute::Ssh(ssh) => {
+                let root = ssh.root.trim_end_matches('/');
+                self.ssh_command(ssh, &format!("rm -r {root}/{build_id}"))
+                    .await
+                    .map(|_| ())
+            }
+            CacheRoute::Local(root) => std::fs::remove_dir_all(root.join(build_id))
+                .map_err(|e| OpsError::Other(format!("cannot remove {build_id}: {e}"))),
+        }
+    }
+
+    async fn ssh_command(&self, ssh: &SshCache, remote: &str) -> OpsResult<String> {
+        let mut command = Command::new("ssh");
+        command
+            .arg("-p")
+            .arg(ssh.port.to_string())
+            .arg("-o")
+            .arg("BatchMode=yes")
+            .arg("-o")
+            .arg("StrictHostKeyChecking=accept-new")
+            .arg("-o")
+            .arg("ConnectTimeout=20");
+        if let Some(key) = &ssh.key {
+            command.arg("-i").arg(expand_home(key));
+        }
+        let output = command
+            .arg(format!("{}@{}", ssh.user, ssh.host))
+            .arg(remote)
+            .output()
+            .await
+            .map_err(|e| OpsError::Other(format!("could not run ssh: {e}")))?;
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.trim().is_empty() {
+            return Err(OpsError::Other(format!(
+                "the cache refused '{remote}': {}",
+                first_line(&stderr)
+            )));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
     async fn local_lookup(&self, root: &Path, build_id: &str) -> (Presence, Vec<CachedDeb>) {
@@ -391,6 +513,74 @@ fn expand_home(path: &str) -> PathBuf {
             .unwrap_or_else(|| PathBuf::from(path)),
         None => PathBuf::from(path),
     }
+}
+
+/// A Buildkite build UUID, which is what a cache build folder is named after.
+pub fn looks_like_build_id(name: &str) -> bool {
+    let groups: Vec<&str> = name.split('-').collect();
+    groups.len() == 5
+        && groups.iter().map(|g| g.len()).eq([8, 4, 4, 4, 12])
+        && groups
+            .iter()
+            .all(|g| g.chars().all(|c| c.is_ascii_hexdigit()))
+}
+
+/// `du -h --max-depth=1` output: `<size>\t<path>`. The root's own total is
+/// dropped, since it is not an entry.
+pub fn parse_du(output: &str, root: &str) -> Vec<CacheEntry> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let (size, path) = line.split_once('\t')?;
+            let path = path.trim();
+            if path == root || path == format!("{root}/") {
+                return None;
+            }
+            let name = path.rsplit('/').next()?.to_string();
+            if name.is_empty() {
+                return None;
+            }
+            Some(CacheEntry {
+                is_build: looks_like_build_id(&name),
+                name,
+                size_bytes: human_size_to_bytes(size.trim()),
+                size: Some(size.trim().to_string()),
+                modified: None,
+            })
+        })
+        .collect()
+}
+
+/// `ls -lt` output, mapping a name to the date columns.
+pub fn parse_ls_times(output: &str) -> std::collections::HashMap<String, String> {
+    let mut times = std::collections::HashMap::new();
+    for line in output.lines() {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        // permissions links owner group size month day time name
+        if fields.len() < 9 || !fields[0].starts_with('d') {
+            continue;
+        }
+        let name = fields[8..].join(" ");
+        times.insert(name, format!("{} {} {}", fields[5], fields[6], fields[7]));
+    }
+    times
+}
+
+/// `28G`, `705M`, `1.2T` — approximate, and only ever used for sorting and
+/// for telling somebody roughly how much a deletion would free.
+pub fn human_size_to_bytes(value: &str) -> Option<u64> {
+    let value = value.trim();
+    let (number, unit) = value.split_at(value.find(|c: char| c.is_ascii_alphabetic())?);
+    let number: f64 = number.parse().ok()?;
+    let multiplier: f64 = match unit.chars().next()? {
+        'K' | 'k' => 1024.0,
+        'M' => 1024f64.powi(2),
+        'G' => 1024f64.powi(3),
+        'T' => 1024f64.powi(4),
+        'P' => 1024f64.powi(5),
+        _ => return None,
+    };
+    Some((number * multiplier) as u64)
 }
 
 fn first_line(text: &str) -> String {

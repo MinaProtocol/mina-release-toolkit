@@ -84,6 +84,7 @@
 <nav>
   <button id="tab-inventory" aria-selected="true" onclick="showTab('inventory')">Inventory</button>
   <button id="tab-nightly" aria-selected="false" onclick="showTab('nightly')">Nightly</button>
+  <button id="tab-cache" aria-selected="false" onclick="showTab('cache')">Cache</button>
   <button id="tab-hardfork" aria-selected="false" onclick="showTab('hardfork')">Hardfork</button>
 </nav>
 
@@ -118,6 +119,16 @@
       </div>
     </form>
     <div id="nightly-out"></div>
+  </section>
+
+  <section id="cache" hidden>
+    <div class="actions">
+      <button class="go" onclick="loadCache()">Load the cache</button>
+      <label class="muted"><input type="checkbox" id="cache-builds-only" checked
+        onchange="renderCache()" style="width:auto"> build folders only</label>
+      <span class="muted" id="cache-status"></span>
+    </div>
+    <div id="cache-out"></div>
   </section>
 
   <section id="hardfork" hidden>
@@ -169,7 +180,7 @@ async function api(path, options = {}) {
   return body;
 }
 
-const TABS = ["inventory", "nightly", "hardfork"];
+const TABS = ["inventory", "nightly", "cache", "hardfork"];
 
 function showTab(name) {
   for (const tab of TABS) {
@@ -369,6 +380,99 @@ function renderNightly(data) {
       data.fixed_since_previous.map(f => `<li class="ok">${escapeHtml(f.name)}</li>`).join("") + `</ul>`;
   }
   return html + warningsBlock(data.warnings);
+}
+
+let CACHE = null;
+
+async function loadCache() {
+  const status = document.getElementById("cache-status");
+  status.textContent = "listing…";
+  try {
+    CACHE = await api("/api/cache");
+    status.textContent = "";
+    renderCache();
+  } catch (e) {
+    status.textContent = "";
+    document.getElementById("cache-out").innerHTML = `<p class="bad">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderCache() {
+  if (!CACHE) return;
+  const buildsOnly = document.getElementById("cache-builds-only").checked;
+  const entries = CACHE.entries.filter(e => !buildsOnly || e.is_build);
+
+  let html = `<p class="muted">${escapeHtml(CACHE.source)} — ${CACHE.build_count} build folders,
+    ${CACHE.shared_count} shared, ${escapeHtml(CACHE.total_size || "size unknown")} in total</p>`;
+
+  html += `<table><tr><th>Entry</th><th>Size</th><th>Modified</th><th></th></tr>` +
+    entries.map(e => {
+      const actions = e.is_build
+        ? `<button class="ghost" onclick="cacheDetail('${escapeHtml(e.name)}')">packages</button>
+           <button class="ghost" onclick="askDelete('${escapeHtml(e.name)}', '${escapeHtml(e.size || "")}')">remove…</button>`
+        : `<span class="muted">shared — not removable</span>`;
+      return `<tr><td>${escapeHtml(e.name)}</td><td>${escapeHtml(e.size || "—")}</td>
+        <td class="muted">${escapeHtml(e.modified || "—")}</td><td>${actions}</td></tr>
+        <tr id="row-${escapeHtml(e.name)}"><td colspan="4" style="padding:0"></td></tr>`;
+    }).join("") + `</table>`;
+
+  document.getElementById("cache-out").innerHTML = html + warningsBlock(CACHE.warnings);
+}
+
+async function cacheDetail(buildId) {
+  const cell = document.querySelector(`#row-${CSS.escape(buildId)} td`);
+  cell.innerHTML = `<p class="muted" style="padding:8px 10px">reading…</p>`;
+  try {
+    const detail = await api("/api/cache/detail?build_id=" + encodeURIComponent(buildId));
+    const byCodename = {};
+    for (const deb of detail.debians) (byCodename[deb.codename] ||= []).push(deb);
+    cell.innerHTML = `<div class="body" style="padding:10px 14px">
+      <p class="muted">versions: ${detail.versions.map(escapeHtml).join(", ") || "none"}</p>` +
+      Object.entries(byCodename).map(([codename, debs]) =>
+        `<details class="group"><summary>${escapeHtml(codename)}
+           <span class="tally"><span class="pill">${debs.length} packages</span></span></summary>
+         <div class="body"><table><tr><th>Package</th><th>Version</th><th>Arch</th></tr>` +
+          debs.map(d => `<tr><td>${escapeHtml(d.package || d.filename)}</td>
+            <td>${escapeHtml(d.version || "—")}</td><td>${escapeHtml(d.arch)}</td></tr>`).join("") +
+        `</table></div></details>`).join("") + `</div>`;
+  } catch (e) {
+    cell.innerHTML = `<p class="bad" style="padding:8px 10px">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function askDelete(buildId, size) {
+  const cell = document.querySelector(`#row-${CSS.escape(buildId)} td`);
+  cell.innerHTML = `<div class="note" style="margin:8px 14px">
+    <strong>Remove ${escapeHtml(buildId)}?</strong>
+    ${size ? ` This frees ${escapeHtml(size)}.` : ""}
+    <p class="muted">This deletes from the shared CI cache that Buildkite reads.
+      Type the UUID to confirm.</p>
+    <div class="actions">
+      <input id="confirm-${escapeHtml(buildId)}" placeholder="${escapeHtml(buildId)}" style="max-width:340px">
+      <button class="ghost" onclick="runDelete('${escapeHtml(buildId)}', true)">Dry run</button>
+      <button class="go" onclick="runDelete('${escapeHtml(buildId)}', false)">Remove</button>
+    </div>
+    <div id="delete-out-${escapeHtml(buildId)}"></div></div>`;
+}
+
+async function runDelete(buildId, dryRun) {
+  const out = document.getElementById("delete-out-" + buildId);
+  const typed = document.getElementById("confirm-" + buildId).value.trim();
+  out.innerHTML = `<p class="muted">${dryRun ? "checking…" : "removing…"}</p>`;
+  try {
+    const report = await api("/api/cache/delete", {
+      method: "POST",
+      body: JSON.stringify({ build_id: buildId, confirm_build_id: typed, dry_run: dryRun }),
+    });
+    const guards = `<ul>` + report.guards.map(g =>
+      `<li class="${g.passed ? "ok" : "bad"}">${escapeHtml(g.name)} — ${escapeHtml(g.detail)}</li>`)
+      .join("") + `</ul>`;
+    out.innerHTML = `<p class="${report.deleted ? "ok" : report.guards.every(g => g.passed) ? "warn" : "bad"}">
+      ${escapeHtml(report.message)}</p>${guards}`;
+    if (report.deleted) loadCache();
+  } catch (e) {
+    out.innerHTML = `<p class="bad">${escapeHtml(e.message)}</p>`;
+  }
 }
 
 function hardforkParams() {

@@ -167,6 +167,30 @@ Three rules close that off:
 
 No CORS headers are sent, deliberately.
 
+## The cache tab
+
+The CI cache is where Mina's packages actually live, and it grows by roughly
+200 GB a day. The tab lists every entry with its size and date — the whole
+cache in about a second, because `du --max-depth=1` and `ls -lt` each walk only
+the top level — and expanding a build shows its packages and versions.
+
+Removal is the one destructive operation in this tool, and it acts on the
+cache Buildkite reads from. Four guards run **on the server**, in this order,
+and all four must pass:
+
+| Guard | Refuses |
+| --- | --- |
+| is a build folder | anything that is not a build UUID, so `legacy`, `docker-cache`, `debs` and `test_data` can never be removed |
+| confirmation matches | a request that does not type the UUID back |
+| not in use by Buildkite | a build Buildkite is running, scheduling or creating — and also a request where that could not be checked, because not knowing is not permission |
+| exists in the cache | a folder that is already gone |
+
+A request with no `dry_run` field is a dry run. Deletions are appended to
+`~/.local/state/mina-ops/deletions.log`.
+
+Bulk pruning is deliberately absent. `buildkite-cache-manager prune` does that
+against a mounted cache, where a mistake is easier to notice than in a browser.
+
 ## As an MCP server
 
 `mina-ops mcp` serves the same queries over MCP on stdin and stdout, so an

@@ -9,6 +9,7 @@
 //! from it rather than copied.
 
 pub mod adapters;
+pub mod cache_admin;
 pub mod config;
 pub mod error;
 pub mod git;

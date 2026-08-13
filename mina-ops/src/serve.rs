@@ -39,6 +39,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::adapters::buildkite::{token_from_environment, BuildkiteClient, NewBuild};
+use crate::cache_admin;
 use crate::config::{Project, Registry};
 use crate::error::{OpsError, OpsResult};
 use crate::hardfork::{self, HardforkParams, Validation};
@@ -92,6 +93,9 @@ pub async fn serve(registry: Registry, options: ServeOptions) -> OpsResult<()> {
         .route("/api/schema", get(schema))
         .route("/api/artifacts", get(artifacts))
         .route("/api/nightly", get(nightly_report))
+        .route("/api/cache", get(cache_list))
+        .route("/api/cache/detail", get(cache_detail))
+        .route("/api/cache/delete", post(cache_delete))
         .route("/api/hardfork/validate", post(validate_hardfork))
         .route("/api/hardfork/trigger", post(trigger_hardfork))
         .with_state(state);
@@ -307,6 +311,92 @@ async fn nightly_report(
     match nightly::collect(&state.project, project, &nightly_query).await {
         Ok(report) => Json(report).into_response(),
         Err(e) => json_error(StatusCode::BAD_GATEWAY, &e.to_string()),
+    }
+}
+
+async fn cache_list(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Some(refused) = refusal(&state, &headers, None) {
+        return refused;
+    }
+    let Ok(project) = state.project() else {
+        return json_error(StatusCode::INTERNAL_SERVER_ERROR, "unknown project");
+    };
+    match cache_admin::list(project).await {
+        Ok(listing) => Json(listing).into_response(),
+        Err(e) => json_error(StatusCode::BAD_GATEWAY, &e.to_string()),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct BuildQuery {
+    build_id: String,
+}
+
+async fn cache_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<BuildQuery>,
+) -> Response {
+    if let Some(refused) = refusal(&state, &headers, None) {
+        return refused;
+    }
+    let Ok(project) = state.project() else {
+        return json_error(StatusCode::INTERNAL_SERVER_ERROR, "unknown project");
+    };
+    match cache_admin::detail(project, &query.build_id).await {
+        Ok(detail) => Json(detail).into_response(),
+        Err(e) => json_error(StatusCode::BAD_GATEWAY, &e.to_string()),
+    }
+}
+
+async fn cache_delete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<cache_admin::DeleteRequest>,
+) -> Response {
+    if let Some(refused) = refusal(&state, &headers, None) {
+        return refused;
+    }
+    let Ok(project) = state.project() else {
+        return json_error(StatusCode::INTERNAL_SERVER_ERROR, "unknown project");
+    };
+
+    match cache_admin::delete(project, &request).await {
+        Ok(report) => {
+            // Every real deletion is recorded, whatever the outcome page shows.
+            if report.deleted {
+                log_deletion(&report);
+            }
+            Json(report).into_response()
+        }
+        Err(e) => json_error(StatusCode::BAD_GATEWAY, &e.to_string()),
+    }
+}
+
+/// Appends to `~/.local/state/mina-ops/deletions.log`. Best effort: a failure
+/// to write the log must not hide the result of the deletion itself.
+fn log_deletion(report: &cache_admin::DeleteReport) {
+    let Some(dir) = dirs::state_dir().or_else(dirs::data_local_dir) else {
+        return;
+    };
+    let dir = dir.join("mina-ops");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let line = format!(
+        "{} {} removed {} freeing {}\n",
+        chrono::Utc::now().to_rfc3339(),
+        triggered_by(),
+        report.build_id,
+        report.freed.as_deref().unwrap_or("unknown")
+    );
+    use std::io::Write;
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("deletions.log"))
+    {
+        let _ = file.write_all(line.as_bytes());
     }
 }
 

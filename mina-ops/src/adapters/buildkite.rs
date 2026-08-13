@@ -240,6 +240,17 @@ impl BuildkiteClient {
         Ok(builds.into_iter().map(Into::into).collect())
     }
 
+    /// Builds Buildkite is running or has scheduled, across the whole
+    /// organisation. Used to refuse deleting a cache folder that CI is using.
+    pub async fn builds_in_flight(&self) -> OpsResult<Vec<BuildSummary>> {
+        let url = format!(
+            "{}/organizations/{}/builds?state[]=running&state[]=scheduled&state[]=creating&per_page=100",
+            self.api_root, self.org
+        );
+        let builds: Vec<ApiBuild> = self.get(&url).await?;
+        Ok(builds.into_iter().map(Into::into).collect())
+    }
+
     /// Creates a build. The only write this tool performs.
     ///
     /// Everything after creation belongs to Buildkite: the returned URL is
