@@ -129,17 +129,24 @@ pub async fn list(project: &Project) -> OpsResult<CacheListing> {
     })
 }
 
-pub async fn detail(project: &Project, build_id: &str) -> OpsResult<CacheDetail> {
+/// Packages under any cache entry — a build folder, or a shared one such as
+/// `legacy`, which is the folder people most often need to look inside.
+pub async fn detail(project: &Project, entry: &str) -> OpsResult<CacheDetail> {
+    if !CacheClient::is_safe_entry_name(entry) {
+        return Err(OpsError::Other(format!(
+            "'{entry}' is not a valid cache entry name"
+        )));
+    }
     let client = client(project)?;
     let source = client.route().describe();
-    let (_, debians) = client.debians_for_build(build_id).await;
+    let (_, debians) = client.debians_for_entry(entry).await;
 
     let mut versions: Vec<String> = debians.iter().filter_map(|d| d.version.clone()).collect();
     versions.sort();
     versions.dedup();
 
     Ok(CacheDetail {
-        build_id: build_id.to_string(),
+        build_id: entry.to_string(),
         source,
         debians,
         versions,

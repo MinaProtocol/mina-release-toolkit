@@ -124,8 +124,8 @@
   <section id="cache" hidden>
     <div class="actions">
       <button class="go" onclick="loadCache()">Load the cache</button>
-      <label class="muted"><input type="checkbox" id="cache-builds-only" checked
-        onchange="renderCache()" style="width:auto"> build folders only</label>
+      <label class="muted"><input type="checkbox" id="cache-builds-only"
+        onchange="renderCache()" style="width:auto"> hide shared folders (legacy, debs, …)</label>
       <span class="muted" id="cache-status"></span>
     </div>
     <div id="cache-out"></div>
@@ -400,17 +400,22 @@ async function loadCache() {
 function renderCache() {
   if (!CACHE) return;
   const buildsOnly = document.getElementById("cache-builds-only").checked;
-  const entries = CACHE.entries.filter(e => !buildsOnly || e.is_build);
+  // Shared folders first: legacy and the others are few, and matter most.
+  const entries = CACHE.entries
+    .filter(e => !buildsOnly || e.is_build)
+    .slice()
+    .sort((a, b) => (a.is_build === b.is_build) ? 0 : (a.is_build ? 1 : -1));
 
   let html = `<p class="muted">${escapeHtml(CACHE.source)} — ${CACHE.build_count} build folders,
     ${CACHE.shared_count} shared, ${escapeHtml(CACHE.total_size || "size unknown")} in total</p>`;
 
   html += `<table><tr><th>Entry</th><th>Size</th><th>Modified</th><th></th></tr>` +
     entries.map(e => {
-      const actions = e.is_build
-        ? `<button class="ghost" onclick="cacheDetail('${escapeHtml(e.name)}')">packages</button>
-           <button class="ghost" onclick="askDelete('${escapeHtml(e.name)}', '${escapeHtml(e.size || "")}')">remove…</button>`
+      const remove = e.is_build
+        ? `<button class="ghost" onclick="askDelete('${escapeHtml(e.name)}', '${escapeHtml(e.size || "")}')">remove…</button>`
         : `<span class="muted">shared — not removable</span>`;
+      const actions =
+        `<button class="ghost" onclick="cacheDetail('${escapeHtml(e.name)}')">packages</button> ${remove}`;
       return `<tr><td>${escapeHtml(e.name)}</td><td>${escapeHtml(e.size || "—")}</td>
         <td class="muted">${escapeHtml(e.modified || "—")}</td><td>${actions}</td></tr>
         <tr id="row-${escapeHtml(e.name)}"><td colspan="4" style="padding:0"></td></tr>`;

@@ -183,6 +183,49 @@ impl CacheClient {
         &self.route
     }
 
+    /// A name that may be interpolated into a remote command.
+    ///
+    /// The cache root holds shared folders as well as builds, so lookups take
+    /// arbitrary names. Only a plain filename is ever accepted: no slashes,
+    /// no `..`, nothing the shell would treat as syntax.
+    pub fn is_safe_entry_name(name: &str) -> bool {
+        !name.is_empty()
+            && name != "."
+            && name != ".."
+            && name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+    }
+
+    /// Packages under any cache entry, build or shared folder.
+    ///
+    /// A build keeps its packages under `<build>/debians/<codename>/`, and so
+    /// does `legacy`; `debs` puts codenames directly under itself. All three
+    /// are handled, because `legacy` is the folder people most often need to
+    /// look inside.
+    pub async fn debians_for_entry(&self, entry: &str) -> (Presence, Vec<CachedDeb>) {
+        if !Self::is_safe_entry_name(entry) {
+            return (
+                Presence::Unknown(format!("'{entry}' is not a valid cache entry name")),
+                Vec::new(),
+            );
+        }
+        if looks_like_build_id(entry) {
+            return self.debians_for_build(entry).await;
+        }
+        match &self.route {
+            CacheRoute::Ssh(ssh) => {
+                let base = format!("{}/{}", ssh.root.trim_end_matches('/'), entry);
+                self.ssh_lookup_at(ssh, &base).await
+            }
+            CacheRoute::Local(root) => {
+                let mut found = Vec::new();
+                collect_debs(&root.join(entry), "", &mut found);
+                finish(found)
+            }
+        }
+    }
+
     /// Packages cached for one Buildkite build.
     ///
     /// The three outcomes are kept apart deliberately: a build folder that is
@@ -340,15 +383,16 @@ impl CacheClient {
     }
 
     async fn ssh_lookup(&self, ssh: &SshCache, build_id: &str) -> (Presence, Vec<CachedDeb>) {
+        let base = format!("{}/{}/debians", ssh.root.trim_end_matches('/'), build_id);
+        self.ssh_lookup_at(ssh, &base).await
+    }
+
+    async fn ssh_lookup_at(&self, ssh: &SshCache, base: &str) -> (Presence, Vec<CachedDeb>) {
         // The Hetzner storage box runs a restricted shell: it accepts a
         // command with arguments, but no `cd`, no `&&`, and no glob
         // expansion. `ls -R` is therefore the only single round trip that
         // reaches the files.
-        let remote = format!(
-            "ls -R {}/{}/debians",
-            ssh.root.trim_end_matches('/'),
-            build_id
-        );
+        let remote = format!("ls -R {base}");
 
         let mut command = Command::new("ssh");
         command
@@ -395,9 +439,10 @@ impl CacheClient {
             );
         }
 
-        finish(parse_recursive_listing(&String::from_utf8_lossy(
-            &output.stdout,
-        )))
+        finish(parse_recursive_listing(
+            &String::from_utf8_lossy(&output.stdout),
+            base,
+        ))
     }
 }
 
@@ -417,6 +462,7 @@ fn collect_debs(dir: &Path, relative: &str, found: &mut Vec<CachedDeb>) {
             };
             collect_debs(&path, &deeper, found);
         } else if name.ends_with(".deb") && !relative.is_empty() {
+            let relative = relative.strip_prefix("debians/").unwrap_or(relative);
             found.push(cached_deb_at(relative, &name));
         }
     }
@@ -430,9 +476,13 @@ fn finish(found: Vec<CachedDeb>) -> (Presence, Vec<CachedDeb>) {
     }
 }
 
-/// Output of `ls -R <...>/debians`: directory headers ending in `:`, then
-/// that directory's entries.
-pub fn parse_recursive_listing(listing: &str) -> Vec<CachedDeb> {
+/// Output of `ls -R <base>`: directory headers ending in `:`, then that
+/// directory's entries.
+///
+/// Paths are reported relative to `base`, and a leading `debians/` is dropped
+/// so a build folder, `legacy` and `debs` all yield the codename first.
+pub fn parse_recursive_listing(listing: &str, base: &str) -> Vec<CachedDeb> {
+    let base = base.trim_end_matches('/');
     let mut found = Vec::new();
     let mut current = String::new();
 
@@ -442,12 +492,7 @@ pub fn parse_recursive_listing(listing: &str) -> Vec<CachedDeb> {
             continue;
         }
         if let Some(header) = line.strip_suffix(':') {
-            // Keep only the part below `debians`, which is the codename and,
-            // where a producer writes one, the architecture directory.
-            current = header
-                .rsplit_once("/debians")
-                .map(|(_, rest)| rest.trim_start_matches('/').to_string())
-                .unwrap_or_default();
+            current = relative_to(header.trim(), base);
             continue;
         }
         if line.ends_with(".deb") && !current.is_empty() {
@@ -456,6 +501,26 @@ pub fn parse_recursive_listing(listing: &str) -> Vec<CachedDeb> {
     }
 
     found
+}
+
+/// The part of `header` below `base`, with any `debians` level removed.
+fn relative_to(header: &str, base: &str) -> String {
+    let rest = header
+        .strip_prefix(base)
+        .map(|rest| rest.trim_start_matches('/'))
+        // `ls` may report a path differently from the one asked for; fall
+        // back to the old rule so a build folder still resolves.
+        .or_else(|| {
+            header
+                .rsplit_once("/debians")
+                .map(|(_, r)| r.trim_start_matches('/'))
+        })
+        .unwrap_or("");
+
+    match rest.strip_prefix("debians") {
+        Some(below) => below.trim_start_matches('/').to_string(),
+        None => rest.to_string(),
+    }
 }
 
 /// A `.deb` at a path below `debians`, which is either `<codename>` or
@@ -611,7 +676,7 @@ mod tests {
 
     #[test]
     fn recursive_listings_take_the_architecture_from_the_filename() {
-        let debs = parse_recursive_listing(LS_R);
+        let debs = parse_recursive_listing(LS_R, "/cache/019ff742/debians");
         assert_eq!(debs.len(), 3, "only .deb files, and no directory names");
 
         let bookworm: Vec<_> = debs.iter().filter(|d| d.codename == "bookworm").collect();
@@ -628,7 +693,7 @@ mod tests {
     #[test]
     fn an_architecture_directory_is_honoured_when_a_producer_writes_one() {
         let listing = "/cache/b/debians/noble/arm64:\nmina-devnet_3.2.0-abc.deb\n";
-        let debs = parse_recursive_listing(listing);
+        let debs = parse_recursive_listing(listing, "/cache/b/debians");
         assert_eq!(debs.len(), 1);
         assert_eq!(debs[0].codename, "noble");
         assert_eq!(
@@ -639,7 +704,47 @@ mod tests {
 
     #[test]
     fn entries_before_any_directory_header_are_ignored() {
-        assert!(parse_recursive_listing("stray_1.0_amd64.deb\n").is_empty());
+        assert!(parse_recursive_listing("stray_1.0_amd64.deb\n", "/cache/b/debians").is_empty());
+    }
+
+    #[test]
+    fn the_legacy_folder_reads_like_a_build_folder() {
+        // legacy/debians/<codename>/… — the `debians` level is dropped, so the
+        // codename comes first exactly as it does for a build.
+        let listing = "/cache/legacy:\ndebians\n\n\
+                       /cache/legacy/debians:\nbullseye\n\n\
+                       /cache/legacy/debians/bullseye:\n\
+                       mina-devnet_3.3.0-compatible-4fa3a5b_amd64.deb\n";
+        let debs = parse_recursive_listing(listing, "/cache/legacy");
+        assert_eq!(debs.len(), 1);
+        assert_eq!(debs[0].codename, "bullseye");
+        assert_eq!(debs[0].arch, "amd64");
+        assert_eq!(debs[0].version.as_deref(), Some("3.3.0-compatible-4fa3a5b"));
+    }
+
+    #[test]
+    fn the_debs_folder_puts_codenames_directly_under_itself() {
+        let listing = "/cache/debs:\nbookworm\n\n\
+                       /cache/debs/bookworm:\nmina-devnet_1.0_amd64.deb\n";
+        let debs = parse_recursive_listing(listing, "/cache/debs");
+        assert_eq!(debs.len(), 1);
+        assert_eq!(debs[0].codename, "bookworm");
+    }
+
+    #[test]
+    fn only_plain_names_may_reach_a_remote_command() {
+        assert!(CacheClient::is_safe_entry_name("legacy"));
+        assert!(CacheClient::is_safe_entry_name(
+            "019ff742-decd-4bfc-8df3-0f4fdea6ea26"
+        ));
+        assert!(CacheClient::is_safe_entry_name("test_data"));
+        // Anything the shell or the path could reinterpret.
+        for bad in ["..", ".", "", "a/b", "a b", "a;rm -rf /", "$(x)", "a*", "~"] {
+            assert!(
+                !CacheClient::is_safe_entry_name(bad),
+                "{bad:?} must be refused"
+            );
+        }
     }
 
     #[test]
