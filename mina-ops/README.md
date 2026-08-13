@@ -136,16 +136,56 @@ failures appear to come and go. The project default is `develop`.
 mina-ops serve            # prints http://127.0.0.1:7777/?t=<token>
 ```
 
-One page over the same API: look up a commit, compare nightlies, and fill in
-the hardfork package-generation parameters as a form rather than pasting a
-block of environment variables into Buildkite.
+Four tabs over the same API: **Inventory** for a commit, **Nightly** for what
+broke tonight, **Cache** for what is on the storage box, and **Pipelines** for
+starting a build.
 
-The hardfork tab checks every field before anything is created — codenames and
-network against the values the pipeline's Dhall accepts, the timestamp for
-UTC, the config URL for existence, and the referenced build UUID for packages
-still in the CI cache. It then shows the exact environment block that would be
-sent. "Copy as env block" gives you that text if you would rather start the
-build from the Buildkite UI.
+The token is kept in `~/.local/state/mina-ops/console-token`, owner only, so
+one bookmark keeps working. `--rotate-token` replaces it; `--ephemeral-token`
+mints one per run instead.
+
+### Pipelines
+
+A pipeline is **declared, not coded**: its slug, its fields and their rules
+live in the project registry, so adding one is a YAML edit.
+
+```yaml
+- key: single-job
+  label: Single job
+  slug: mina-single-job
+  always_env: { GIT_LFS_SKIP_SMUDGE: "1" }
+  fields:
+    - name: JOB_NAME
+      label: Job name
+      required: true
+      placeholder: HardForkTestLegacy
+```
+
+Each field becomes an environment variable. `kind` is `text`, `select` or
+`checkbox`; `required`, `options`, `pattern`, `default`, `placeholder` and
+`help` do what they say. An unticked checkbox is *absent* rather than empty,
+because the pipelines' own scripts test for emptiness to decide.
+
+Seven ship by default — hardfork, docker, debian, stable, nightly,
+all-configurations and single-job. Most take only a branch, which is what
+their real builds show.
+
+A declaration can say "one of these values" or "matches this pattern", but not
+"this URL exists". A pipeline may therefore name built-in deep checks:
+
+```yaml
+checks: hardfork
+```
+
+which adds, for hardfork: the config URL must resolve, the referenced build
+must still hold packages in the CI cache, the precomputed block prefix must
+exist, the codenames must be ones the pipeline's Dhall accepts, and the
+timestamp must be UTC. Where a deep check and a declared check name the same
+field, the deeper one replaces it, so each field is reported once.
+
+The tab then shows exactly what would be sent. "Copy as env block" gives you
+that text if you would rather start the build from the Buildkite UI — the
+console never becomes the only way in.
 
 Creating a build requires an explicit confirmation, and the server re-runs
 every check on the confirmed request rather than trusting the browser's copy.

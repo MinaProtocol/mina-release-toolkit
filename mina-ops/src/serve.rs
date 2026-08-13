@@ -26,7 +26,6 @@
 //!
 //! No CORS headers are sent, by omission and on purpose.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -36,16 +35,15 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 
-use crate::adapters::buildkite::{token_from_environment, BuildkiteClient, NewBuild};
 use crate::cache_admin;
 use crate::config::{Project, Registry};
 use crate::error::{OpsError, OpsResult};
-use crate::hardfork::{self, HardforkParams, Validation};
 use crate::inventory::{self, InventoryQuery};
 use crate::nightly::{self, NightlyQuery};
+use crate::pipelines;
 
 const TOKEN_HEADER: &str = "x-mina-ops-token";
 const CONSOLE: &str = include_str!("console.html");
@@ -205,8 +203,9 @@ pub async fn serve(registry: Registry, options: ServeOptions) -> OpsResult<()> {
         .route("/api/cache", get(cache_list))
         .route("/api/cache/detail", get(cache_detail))
         .route("/api/cache/delete", post(cache_delete))
-        .route("/api/hardfork/validate", post(validate_hardfork))
-        .route("/api/hardfork/trigger", post(trigger_hardfork))
+        .route("/api/pipelines", get(pipelines_list))
+        .route("/api/pipelines/validate", post(validate_pipeline))
+        .route("/api/pipelines/trigger", post(trigger_pipeline))
         .with_state(state);
 
     let address = format!("127.0.0.1:{}", options.port);
@@ -307,14 +306,9 @@ async fn schema(State(state): State<AppState>, headers: HeaderMap) -> Response {
     Json(json!({
         "project": state.project,
         "repo": project.repo,
-        "codenames": hardfork::CODENAMES,
-        "architectures": hardfork::ARCHITECTURES,
-        "networks": hardfork::NETWORKS,
-        "repos": hardfork::REPOS,
         "artifacts": project.defaults.artifacts,
         "debian_codenames": project.defaults.codenames,
         "channels": ["unstable", "alpha", "beta", "stable"],
-        "hardfork_pipeline": project.buildkite.hardfork_pipeline,
         "nightly_pipeline": project.buildkite.nightly_pipeline,
         "nightly_branch": project.buildkite.nightly_branch,
     }))
@@ -526,10 +520,20 @@ fn log_deletion(report: &cache_admin::DeleteReport) {
     }
 }
 
-async fn validate_hardfork(
+async fn pipelines_list(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Some(refused) = refusal(&state, &headers, None) {
+        return refused;
+    }
+    let Ok(project) = state.project() else {
+        return json_error(StatusCode::INTERNAL_SERVER_ERROR, "unknown project");
+    };
+    Json(json!({ "pipelines": project.pipelines })).into_response()
+}
+
+async fn validate_pipeline(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(params): Json<HardforkParams>,
+    Json(request): Json<pipelines::TriggerRequest>,
 ) -> Response {
     if let Some(refused) = refusal(&state, &headers, None) {
         return refused;
@@ -537,37 +541,16 @@ async fn validate_hardfork(
     let Ok(project) = state.project() else {
         return json_error(StatusCode::INTERNAL_SERVER_ERROR, "unknown project");
     };
-    let Some(pipeline) = project.buildkite.hardfork_pipeline.clone() else {
-        return json_error(
-            StatusCode::BAD_REQUEST,
-            "no hardfork pipeline configured for this project",
-        );
-    };
-
-    Json(hardfork::validate(&params, project, &pipeline).await).into_response()
+    match pipelines::validate(project, &request).await {
+        Ok(validation) => Json(validation).into_response(),
+        Err(e) => json_error(StatusCode::BAD_REQUEST, &e.to_string()),
+    }
 }
 
-#[derive(Debug, Deserialize)]
-struct TriggerRequest {
-    #[serde(flatten)]
-    params: HardforkParams,
-    /// Must be true. A trigger is never a side effect of filling in a form.
-    #[serde(default)]
-    confirm: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct TriggerResponse {
-    web_url: String,
-    number: u64,
-    state: String,
-    env: BTreeMap<String, String>,
-}
-
-async fn trigger_hardfork(
+async fn trigger_pipeline(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<TriggerRequest>,
+    Json(request): Json<pipelines::TriggerRequest>,
 ) -> Response {
     if let Some(refused) = refusal(&state, &headers, None) {
         return refused;
@@ -575,58 +558,11 @@ async fn trigger_hardfork(
     let Ok(project) = state.project() else {
         return json_error(StatusCode::INTERNAL_SERVER_ERROR, "unknown project");
     };
-    let Some(pipeline) = project.buildkite.hardfork_pipeline.clone() else {
-        return json_error(
-            StatusCode::BAD_REQUEST,
-            "no hardfork pipeline configured for this project",
-        );
-    };
-
-    if !request.confirm {
-        return json_error(
-            StatusCode::BAD_REQUEST,
-            "confirm must be true to create a build",
-        );
-    }
-
-    // Re-checked here rather than trusted from the browser: the client's
-    // copy of the validation proves nothing about this request.
-    let validation: Validation = hardfork::validate(&request.params, project, &pipeline).await;
-    if !validation.is_submittable() {
-        return (StatusCode::BAD_REQUEST, Json(validation)).into_response();
-    }
-
-    let token = match token_from_environment() {
-        Ok(token) => token,
-        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e.to_string()),
-    };
-
-    let mut env = request.params.to_env();
-    // The Buildkite token belongs to the operator, so Buildkite already
-    // records who created the build. This makes it visible in the build's own
-    // environment as well.
-    env.insert("TRIGGERED_BY".into(), triggered_by());
-
-    let new_build = NewBuild {
-        commit: "HEAD".to_string(),
-        branch: request.params.branch.clone(),
-        message: format!(
-            "hardfork packages for {} at {} (via mina-ops)",
-            request.params.network, request.params.genesis_timestamp
-        ),
-        env,
-    };
-
-    let client = BuildkiteClient::new(&project.buildkite.org, token);
-    match client.create_build(&pipeline, &new_build).await {
-        Ok(created) => Json(TriggerResponse {
-            web_url: created.web_url,
-            number: created.number,
-            state: created.state,
-            env: new_build.env,
-        })
-        .into_response(),
-        Err(e) => json_error(StatusCode::BAD_GATEWAY, &e.to_string()),
+    match pipelines::trigger(project, &request).await {
+        // Refused by the server's own re-check, which is what is returned.
+        Ok(Err(validation)) => (StatusCode::BAD_REQUEST, Json(validation)).into_response(),
+        Ok(Ok(result)) => Json(result).into_response(),
+        Err(e) => json_error(StatusCode::BAD_REQUEST, &e.to_string()),
     }
 }
 
@@ -781,6 +717,41 @@ mod tests {
         assert_eq!(mode, 0o600);
         // Already correct: nothing to say.
         assert!(tighten_permissions(&path).is_none());
+    }
+
+    /// The page is one inline script, so a duplicate top-level binding is a
+    /// syntax error that disables the entire console — silently, because
+    /// nothing on the server side notices. This catches that class of edit.
+    #[test]
+    fn the_console_script_declares_each_binding_once() {
+        let script = CONSOLE
+            .split_once("<script>")
+            .and_then(|(_, rest)| rest.split_once("</script>"))
+            .map(|(script, _)| script)
+            .expect("the console has an inline script");
+
+        let mut seen: Vec<&str> = Vec::new();
+        for line in script.lines() {
+            // Top level means column zero. An indented binding lives inside a
+            // function, where shadowing is ordinary and harmless.
+            for keyword in ["let ", "const ", "var "] {
+                if let Some(rest) = line.strip_prefix(keyword) {
+                    let name = rest
+                        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                        .next()
+                        .unwrap_or_default();
+                    if name.is_empty() {
+                        continue;
+                    }
+                    assert!(
+                        !seen.contains(&name),
+                        "'{name}' is declared twice at the top level, which breaks the whole script"
+                    );
+                    seen.push(name);
+                }
+            }
+        }
+        assert!(seen.contains(&"TOKEN"), "the scan found no bindings at all");
     }
 
     #[test]

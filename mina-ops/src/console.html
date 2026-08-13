@@ -85,7 +85,7 @@
   <button id="tab-inventory" aria-selected="true" onclick="showTab('inventory')">Inventory</button>
   <button id="tab-nightly" aria-selected="false" onclick="showTab('nightly')">Nightly</button>
   <button id="tab-cache" aria-selected="false" onclick="showTab('cache')">Cache</button>
-  <button id="tab-hardfork" aria-selected="false" onclick="showTab('hardfork')">Hardfork</button>
+  <button id="tab-pipelines" aria-selected="false" onclick="showTab('pipelines')">Pipelines</button>
 </nav>
 
 <main>
@@ -131,44 +131,27 @@
     <div id="cache-out"></div>
   </section>
 
-  <section id="hardfork" hidden>
-    <p class="muted">Every field below becomes an environment variable on the build.
-      Checks run before anything is created, and again on the server when you confirm.</p>
-    <form onsubmit="validateHardfork(event)">
-      <div class="row"><label for="hf-branch">Branch</label>
-        <input id="hf-branch" placeholder="devnet-dryrun" required></div>
-      <div class="row"><label for="hf-codenames">CODENAMES_CONFIG</label>
-        <input id="hf-codenames" placeholder="Jammy_Amd64" required></div>
-      <div class="row"><label for="hf-network">NETWORK</label>
-        <select id="hf-network"></select></div>
-      <div class="row"><label for="hf-timestamp">GENESIS_TIMESTAMP</label>
-        <input id="hf-timestamp" placeholder="2026-08-08T21:00:00.00Z" required></div>
-      <div class="row"><label for="hf-config">CONFIG_JSON_GZ_URL</label>
-        <input id="hf-config" placeholder="https://storage.googleapis.com/…json.gz" required></div>
-      <div class="row"><label for="hf-blocks">PRECOMPUTED_FORK_BLOCK_PREFIX</label>
-        <input id="hf-blocks" placeholder="gs://mesa-hf-precomputed-blocks/…"></div>
-      <div class="row"><label for="hf-artifacts">USE_ARTIFACTS_FROM_BUILDKITE_BUILD</label>
-        <input id="hf-artifacts" placeholder="019fe333-ee52-45fa-8404-ba189bc1b57b"></div>
-      <div class="row"><label for="hf-dockers">USE_GENERIC_DOCKERS_FROM_VERSION</label>
-        <input id="hf-dockers" placeholder="4.0.0-rc1-devnet-dryrun-ee5cb7f"></div>
-      <div class="row"><label for="hf-repo">REPO</label>
-        <select id="hf-repo"></select></div>
-      <div class="row"><label for="hf-ledger">MINA_LEDGER_S3_BUCKET</label>
-        <input id="hf-ledger" value="https://s3-us-west-2.amazonaws.com/snark-keys.o1test.net"></div>
+  <section id="pipelines" hidden>
+    <div class="row"><label for="pipeline-key">Pipeline</label>
+      <select id="pipeline-key" onchange="renderPipelineForm()"></select></div>
+    <p class="muted" id="pipeline-description"></p>
+    <form onsubmit="checkPipeline(event)">
+      <div class="row"><label for="pipeline-branch">Branch</label>
+        <input id="pipeline-branch" required></div>
+      <div id="pipeline-fields"></div>
       <div class="actions">
         <button class="go" type="submit">Check</button>
         <button class="ghost" type="button" onclick="copyEnv()">Copy as env block</button>
-        <span class="muted" id="hf-status"></span>
+        <span class="muted" id="pipeline-status"></span>
       </div>
     </form>
-    <div id="hf-out"></div>
+    <div id="pipeline-out"></div>
   </section>
+
 </main>
 
 <script>
 const TOKEN = "__TOKEN__";
-let LAST_ENV = null;
-let LAST_PARAMS = null;
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -180,7 +163,7 @@ async function api(path, options = {}) {
   return body;
 }
 
-const TABS = ["inventory", "nightly", "cache", "hardfork"];
+const TABS = ["inventory", "nightly", "cache", "pipelines"];
 
 function showTab(name) {
   for (const tab of TABS) {
@@ -239,8 +222,6 @@ async function loadSchema() {
   document.getElementById("project").textContent =
     `${schema.project} · ${schema.repo} — reads everything, writes only when you confirm`;
   fill("channel", schema.channels, "unstable");
-  fill("hf-network", schema.networks, "Devnet");
-  fill("hf-repo", schema.repos, "Nightly");
   if (schema.nightly_branch) document.getElementById("nightly-branch").placeholder = schema.nightly_branch;
 }
 
@@ -518,31 +499,84 @@ async function runDelete(buildId, dryRun) {
   }
 }
 
-function hardforkParams() {
+let PIPELINES = [];
+let LAST_ENV = null;
+let LAST_REQUEST = null;
+
+async function loadPipelines() {
+  const data = await api("/api/pipelines");
+  PIPELINES = data.pipelines || [];
+  document.getElementById("pipeline-key").innerHTML = PIPELINES.map(p =>
+    `<option value="${escapeHtml(p.key)}">${escapeHtml(p.label)}</option>`).join("");
+  renderPipelineForm();
+}
+
+function currentPipeline() {
+  const key = document.getElementById("pipeline-key").value;
+  return PIPELINES.find(p => p.key === key);
+}
+
+/// The form is drawn from the declaration, so a new pipeline needs no code.
+function renderPipelineForm() {
+  const spec = currentPipeline();
+  if (!spec) return;
+  document.getElementById("pipeline-description").textContent = spec.description || "";
+  document.getElementById("pipeline-branch").value = spec.default_branch || "";
+  document.getElementById("pipeline-out").innerHTML = "";
+
+  const always = Object.entries(spec.always_env || {})
+    .map(([k, v]) => `${k}=${v}`).join(", ");
+
+  document.getElementById("pipeline-fields").innerHTML =
+    (spec.fields || []).map(field => {
+      const id = "field-" + field.name;
+      const required = field.required ? "required" : "";
+      let control;
+      if (field.kind === "select") {
+        control = `<select id="${escapeHtml(id)}">` + (field.options || []).map(option =>
+          `<option ${option === field.default ? "selected" : ""}>${escapeHtml(option)}</option>`)
+          .join("") + `</select>`;
+      } else if (field.kind === "checkbox") {
+        control = `<input type="checkbox" id="${escapeHtml(id)}" style="width:auto">`;
+      } else {
+        control = `<input id="${escapeHtml(id)}" ${required}
+          value="${escapeHtml(field.default || "")}"
+          placeholder="${escapeHtml(field.placeholder || "")}">`;
+      }
+      const help = field.help ? `<div class="muted" style="grid-column:2">${escapeHtml(field.help)}</div>` : "";
+      return `<div class="row"><label for="${escapeHtml(id)}">${escapeHtml(field.name)}
+        ${field.required ? '<span class="bad">*</span>' : ""}</label>${control}</div>${help}`;
+    }).join("") +
+    (always ? `<p class="muted">always set: ${escapeHtml(always)}</p>` : "");
+}
+
+function pipelineRequest() {
+  const spec = currentPipeline();
+  const values = {};
+  for (const field of spec.fields || []) {
+    const element = document.getElementById("field-" + field.name);
+    if (!element) continue;
+    values[field.name] = field.kind === "checkbox"
+      ? (element.checked ? "1" : "")
+      : element.value.trim();
+  }
   return {
-    branch: document.getElementById("hf-branch").value.trim(),
-    codenames_config: document.getElementById("hf-codenames").value.trim(),
-    network: document.getElementById("hf-network").value,
-    genesis_timestamp: document.getElementById("hf-timestamp").value.trim(),
-    config_json_gz_url: document.getElementById("hf-config").value.trim(),
-    precomputed_fork_block_prefix: document.getElementById("hf-blocks").value.trim(),
-    use_artifacts_from_buildkite_build: document.getElementById("hf-artifacts").value.trim(),
-    use_generic_dockers_from_version: document.getElementById("hf-dockers").value.trim(),
-    repo: document.getElementById("hf-repo").value,
-    mina_ledger_s3_bucket: document.getElementById("hf-ledger").value.trim(),
+    pipeline: spec.key,
+    branch: document.getElementById("pipeline-branch").value.trim(),
+    values,
   };
 }
 
-async function validateHardfork(event) {
+async function checkPipeline(event) {
   event.preventDefault();
-  const status = document.getElementById("hf-status");
-  const out = document.getElementById("hf-out");
-  LAST_PARAMS = hardforkParams();
+  const status = document.getElementById("pipeline-status");
+  const out = document.getElementById("pipeline-out");
+  LAST_REQUEST = pipelineRequest();
 
   status.textContent = "checking…"; out.innerHTML = "";
   try {
-    const result = await api("/api/hardfork/validate",
-      { method: "POST", body: JSON.stringify(LAST_PARAMS) });
+    const result = await api("/api/pipelines/validate",
+      { method: "POST", body: JSON.stringify(LAST_REQUEST) });
     status.textContent = "";
     LAST_ENV = result.env;
     out.innerHTML = renderValidation(result);
@@ -559,23 +593,23 @@ function renderValidation(result) {
   }).join("") + `</ul>` +
   `<h4>Environment that would be sent</h4><pre>${escapeHtml(
      Object.entries(result.env).map(([k, v]) => `${k}: "${v}"`).join("\n"))}</pre>` +
-  `<p class="muted">Pipeline: ${escapeHtml(result.pipeline)}</p>`;
+  `<p class="muted">Pipeline: ${escapeHtml(result.slug)} · branch ${escapeHtml(result.branch)}</p>`;
 
   if (failed.length) {
     return html + `<p class="bad">${failed.length} check(s) failed. Fix them before creating a build.</p>`;
   }
   return html + `<div class="actions">
-      <button class="go" onclick="triggerHardfork()">Create the build</button>
+      <button class="go" onclick="triggerPipeline()">Create the build</button>
       <span class="muted">This creates a real Buildkite build.</span>
-    </div><div id="hf-result"></div>`;
+    </div><div id="pipeline-result"></div>`;
 }
 
-async function triggerHardfork() {
-  const out = document.getElementById("hf-result");
+async function triggerPipeline() {
+  const out = document.getElementById("pipeline-result");
   out.innerHTML = `<p class="muted">creating…</p>`;
   try {
-    const result = await api("/api/hardfork/trigger",
-      { method: "POST", body: JSON.stringify({ ...LAST_PARAMS, confirm: true }) });
+    const result = await api("/api/pipelines/trigger",
+      { method: "POST", body: JSON.stringify({ ...LAST_REQUEST, confirm: true }) });
     if (result.checks) {
       out.innerHTML = `<p class="bad">The server re-checked and refused.</p>` + renderValidation(result);
       return;
@@ -591,14 +625,14 @@ async function triggerHardfork() {
 function copyEnv() {
   const params = LAST_ENV || null;
   if (!params) {
-    document.getElementById("hf-status").textContent = "check the parameters first";
+    document.getElementById("pipeline-status").textContent = "check the parameters first";
     return;
   }
   const text = "env:\n" + Object.entries(params)
     .map(([k, v]) => `  ${k}: "${v}"`).join("\n");
   navigator.clipboard.writeText(text).then(
-    () => { document.getElementById("hf-status").textContent = "copied"; },
-    () => { document.getElementById("hf-status").textContent = "could not copy"; });
+    () => { document.getElementById("pipeline-status").textContent = "copied"; },
+    () => { document.getElementById("pipeline-status").textContent = "could not copy"; });
 }
 
 /// A lookup can be linked to: ?commit=8c0c2e6&channel=stable runs on load.
@@ -617,7 +651,7 @@ function prefillFromUrl() {
 }
 
 showTab(tabFromHash());
-loadSchema().then(prefillFromUrl).catch(e => {
+loadSchema().then(loadPipelines).then(prefillFromUrl).catch(e => {
   document.getElementById("project").textContent = "could not load the schema: " + e.message;
 });
 </script>

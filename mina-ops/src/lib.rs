@@ -18,5 +18,6 @@ pub mod inventory;
 pub mod mcp;
 pub mod model;
 pub mod nightly;
+pub mod pipelines;
 pub mod report;
 pub mod serve;

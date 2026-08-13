@@ -30,6 +30,10 @@ pub struct Project {
     /// repository.
     #[serde(default)]
     pub cache: Option<crate::adapters::hetzner::CacheConfig>,
+    /// Pipelines the console can start. Declared, not coded: adding one is a
+    /// YAML edit.
+    #[serde(default)]
+    pub pipelines: Vec<crate::pipelines::PipelineSpec>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,9 +48,6 @@ pub struct BuildkiteConfig {
     /// mixes release branches into the comparison.
     #[serde(default)]
     pub nightly_branch: Option<String>,
-    /// Pipeline the hardfork package-generation form triggers.
-    #[serde(default)]
-    pub hardfork_pipeline: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

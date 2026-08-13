@@ -22,8 +22,7 @@ projects:
       # Defaults for `mina-ops nightly`.
       nightly_pipeline: mina-mainline-branches-nightlies
       nightly_branch: develop
-      # Pipeline the hardfork package-generation form triggers.
-      hardfork_pipeline: hardfork-package-generation-new
+
     apt:
       region: us-west-2
     docker:
@@ -63,3 +62,117 @@ projects:
     #     port: 23
     #     key: ~/.ssh/storagebox.key
     #     root: /home/generic/cache-root
+
+    # Pipelines the console can start. Every field here becomes an environment
+    # variable on the build; `always_env` is set on every build of that
+    # pipeline. Adding a pipeline is an edit here, not a code change.
+    pipelines:
+      - key: hardfork
+        label: Hardfork packages
+        slug: hardfork-package-generation-new
+        description: Generate hardfork packages for a fork configuration.
+        default_branch: compatible
+        # Reaches out to check the config URL, the referenced build's cached
+        # packages, and the precomputed-block prefix.
+        checks: hardfork
+        always_env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+        fields:
+          - name: CODENAMES_CONFIG
+            label: Codenames
+            required: true
+            placeholder: Jammy_Amd64
+            help: Comma-separated <Codename>_<Arch>, for example Jammy_Amd64.
+          - name: NETWORK
+            label: Network
+            kind: select
+            required: true
+            default: Devnet
+            options: [Devnet, Mainnet]
+          - name: GENESIS_TIMESTAMP
+            label: Genesis timestamp
+            required: true
+            placeholder: 2026-08-08T21:00:00.00Z
+            help: Must be UTC and end with Z.
+          - name: CONFIG_JSON_GZ_URL
+            label: Config json.gz URL
+            required: true
+            placeholder: https://storage.googleapis.com/…/config.json.gz
+          - name: PRECOMPUTED_FORK_BLOCK_PREFIX
+            label: Precomputed block prefix
+            placeholder: gs://mesa-hf-precomputed-blocks/…
+          - name: USE_ARTIFACTS_FROM_BUILDKITE_BUILD
+            label: Artifacts from build
+            placeholder: 019fe333-ee52-45fa-8404-ba189bc1b57b
+            pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            help: A Buildkite build UUID, not a build number.
+          - name: USE_GENERIC_DOCKERS_FROM_VERSION
+            label: Generic dockers from version
+            placeholder: 4.0.0-rc1-devnet-dryrun-ee5cb7f
+          - name: REPO
+            label: Repository
+            kind: select
+            default: Nightly
+            options: [Nightly, Unstable, Alpha, Beta]
+          - name: MINA_LEDGER_S3_BUCKET
+            label: Ledger bucket
+            default: https://s3-us-west-2.amazonaws.com/snark-keys.o1test.net
+
+      - key: docker
+        label: Build docker images
+        slug: mina-build-docker
+        description: Build docker images for a branch, optionally filtered.
+        always_env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+        fields:
+          - name: BUILDKITE_PIPELINE_FILTER
+            label: Pipeline filter
+            placeholder: DockerBuildAmd64DevnetBookworm
+            help: A job name to build. Leave blank to build everything.
+          - name: BUILDKITE_PIPELINE_FILTER_MODE
+            label: Filter mode
+            kind: select
+            default: All
+            options: [All, Fast, Long]
+
+      - key: debian
+        label: Build debian packages
+        slug: mina-build-debian
+        description: Build the debian packages for a branch.
+        always_env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+
+      - key: stable
+        label: Stable release build
+        slug: mina-stable
+        description: The stable pipeline, normally run from a release branch.
+        default_branch: compatible
+        always_env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+
+      - key: nightly
+        label: Nightly
+        slug: mina-mainline-branches-nightlies
+        description: The nightly pipeline that the Nightly tab reports on.
+        default_branch: develop
+        always_env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+
+      - key: all-configurations
+        label: All debian and docker configurations
+        slug: mina-all-debian-dockers-configurations
+        description: Every codename and architecture combination.
+        always_env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+
+      - key: single-job
+        label: Single job
+        slug: mina-single-job
+        description: Run one named job from the main pipeline.
+        fields:
+          - name: JOB_NAME
+            label: Job name
+            required: true
+            placeholder: HardForkTestLegacy
+        always_env:
+          GIT_LFS_SKIP_SMUDGE: "1"

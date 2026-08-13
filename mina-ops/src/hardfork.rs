@@ -9,11 +9,10 @@
 
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
-
 use crate::adapters::hetzner::{self, CacheClient};
 use crate::config::Project;
 use crate::model::Presence;
+use crate::pipelines::Check;
 
 /// Codenames and architectures the pipeline's Dhall accepts, in the
 /// capitalised spelling `CODENAMES_CONFIG` requires.
@@ -26,163 +25,36 @@ pub const ARCHITECTURES: [&str; 2] = ["Amd64", "Arm64"];
 pub const NETWORKS: [&str; 2] = ["Devnet", "Mainnet"];
 pub const REPOS: [&str; 4] = ["Nightly", "Unstable", "Alpha", "Beta"];
 
-/// One field's worth of parameters, as the pipeline expects them.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct HardforkParams {
-    /// Comma-separated `<Codename>_<Arch>`, for example `Jammy_Amd64`.
-    pub codenames_config: String,
-    pub network: String,
-    pub genesis_timestamp: String,
-    pub config_json_gz_url: String,
-    #[serde(default)]
-    pub precomputed_fork_block_prefix: Option<String>,
-    #[serde(default)]
-    pub use_artifacts_from_buildkite_build: Option<String>,
-    #[serde(default)]
-    pub use_generic_dockers_from_version: Option<String>,
-    #[serde(default)]
-    pub repo: Option<String>,
-    #[serde(default)]
-    pub mina_ledger_s3_bucket: Option<String>,
-    #[serde(default)]
-    pub version: Option<String>,
-    /// Branch the pipeline runs from.
-    pub branch: String,
-}
-
-impl HardforkParams {
-    /// The environment block Buildkite receives — the same one that would
-    /// otherwise be pasted by hand.
-    pub fn to_env(&self) -> BTreeMap<String, String> {
-        let mut env = BTreeMap::new();
-        env.insert("CODENAMES_CONFIG".into(), self.codenames_config.clone());
-        env.insert("NETWORK".into(), self.network.clone());
-        env.insert("GENESIS_TIMESTAMP".into(), self.genesis_timestamp.clone());
-        env.insert("CONFIG_JSON_GZ_URL".into(), self.config_json_gz_url.clone());
-        // Large repositories are cloned without LFS content, as the pipeline
-        // has always done.
-        env.insert("GIT_LFS_SKIP_SMUDGE".into(), "1".into());
-
-        let mut optional = |key: &str, value: &Option<String>| {
-            if let Some(value) = value.as_ref().map(|v| v.trim()).filter(|v| !v.is_empty()) {
-                env.insert(key.to_string(), value.to_string());
-            }
-        };
-        optional(
-            "PRECOMPUTED_FORK_BLOCK_PREFIX",
-            &self.precomputed_fork_block_prefix,
-        );
-        optional(
-            "USE_ARTIFACTS_FROM_BUILDKITE_BUILD",
-            &self.use_artifacts_from_buildkite_build,
-        );
-        optional(
-            "USE_GENERIC_DOCKERS_FROM_VERSION",
-            &self.use_generic_dockers_from_version,
-        );
-        optional("REPO", &self.repo);
-        optional("MINA_LEDGER_S3_BUCKET", &self.mina_ledger_s3_bucket);
-        optional("VERSION", &self.version);
-        env
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "outcome", content = "detail", rename_all = "snake_case")]
-pub enum Outcome {
-    Passed(String),
-    /// The value is wrong. Submitting would waste a build.
-    Failed(String),
-    /// The check could not run. Not a reason to block, but it is reported.
-    Unknown(String),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Check {
-    pub field: String,
-    #[serde(flatten)]
-    pub outcome: Outcome,
-}
-
-impl Check {
-    fn passed(field: &str, detail: impl Into<String>) -> Self {
-        Check {
-            field: field.to_string(),
-            outcome: Outcome::Passed(detail.into()),
-        }
-    }
-    fn failed(field: &str, detail: impl Into<String>) -> Self {
-        Check {
-            field: field.to_string(),
-            outcome: Outcome::Failed(detail.into()),
-        }
-    }
-    fn unknown(field: &str, detail: impl Into<String>) -> Self {
-        Check {
-            field: field.to_string(),
-            outcome: Outcome::Unknown(detail.into()),
-        }
-    }
-    pub fn has_failed(&self) -> bool {
-        matches!(self.outcome, Outcome::Failed(_))
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Validation {
-    pub checks: Vec<Check>,
-    /// The environment block that would be sent, shown before anything is
-    /// created so it can be read — or copied into the Buildkite UI instead.
-    pub env: BTreeMap<String, String>,
-    pub pipeline: String,
-}
-
-impl Validation {
-    pub fn is_submittable(&self) -> bool {
-        !self.checks.iter().any(Check::has_failed)
-    }
-}
-
-/// Checks that need no network. Kept separate so they can be tested without
-/// reaching anything.
-pub fn check_offline(params: &HardforkParams) -> Vec<Check> {
+/// Deep checks for the hardfork pipeline: the ones that reach the outside
+/// world and cannot be expressed as a pattern or a list of options.
+///
+/// A wrong codename fails in seconds because the pipeline's Dhall rejects it.
+/// A config URL that does not exist, or a build whose packages have been
+/// pruned, fails after a long build — which is what these prevent.
+pub async fn deep_checks(env: &BTreeMap<String, String>, project: &Project) -> Vec<Check> {
     let mut checks = Vec::new();
 
-    checks.push(check_codenames(&params.codenames_config));
-
-    checks.push(if NETWORKS.contains(&params.network.as_str()) {
-        Check::passed("NETWORK", &params.network)
-    } else {
-        Check::failed("NETWORK", format!("must be one of {}", NETWORKS.join(", ")))
-    });
-
-    checks.push(check_timestamp(&params.genesis_timestamp));
-
-    if let Some(repo) = params.repo.as_deref().filter(|r| !r.is_empty()) {
-        checks.push(if REPOS.contains(&repo) {
-            Check::passed("REPO", repo)
-        } else {
-            Check::failed("REPO", format!("must be one of {}", REPOS.join(", ")))
-        });
+    if let Some(url) = env.get("CONFIG_JSON_GZ_URL") {
+        checks.push(check_url(url).await);
     }
 
-    if let Some(build) = params
-        .use_artifacts_from_buildkite_build
-        .as_deref()
-        .filter(|b| !b.is_empty())
+    if let Some(build_id) = env
+        .get("USE_ARTIFACTS_FROM_BUILDKITE_BUILD")
+        .filter(|b| looks_like_uuid(b))
     {
-        checks.push(if looks_like_uuid(build) {
-            Check::passed("USE_ARTIFACTS_FROM_BUILDKITE_BUILD", "well-formed UUID")
-        } else {
-            Check::failed(
-                "USE_ARTIFACTS_FROM_BUILDKITE_BUILD",
-                "must be a Buildkite build UUID, not a build number",
-            )
-        });
+        checks.push(check_cached_build(build_id, project).await);
     }
 
-    if params.branch.trim().is_empty() {
-        checks.push(Check::failed("branch", "a branch is required"));
+    if let Some(prefix) = env.get("PRECOMPUTED_FORK_BLOCK_PREFIX") {
+        checks.push(check_gs_prefix(prefix).await);
+    }
+
+    if let Some(codenames) = env.get("CODENAMES_CONFIG") {
+        checks.push(check_codenames(codenames));
+    }
+
+    if let Some(timestamp) = env.get("GENESIS_TIMESTAMP") {
+        checks.push(check_timestamp(timestamp));
     }
 
     checks
@@ -247,32 +119,6 @@ pub fn looks_like_uuid(value: &str) -> bool {
         && groups
             .iter()
             .all(|g| g.chars().all(|c| c.is_ascii_hexdigit()))
-}
-
-/// Checks that reach the outside world: does the config exist, are the
-/// referenced build's packages still cached.
-pub async fn check_online(params: &HardforkParams, project: &Project) -> Vec<Check> {
-    let mut checks = Vec::new();
-
-    checks.push(check_url(&params.config_json_gz_url).await);
-
-    if let Some(build_id) = params
-        .use_artifacts_from_buildkite_build
-        .as_deref()
-        .filter(|b| looks_like_uuid(b))
-    {
-        checks.push(check_cached_build(build_id, project).await);
-    }
-
-    if let Some(prefix) = params
-        .precomputed_fork_block_prefix
-        .as_deref()
-        .filter(|p| !p.is_empty())
-    {
-        checks.push(check_gs_prefix(prefix).await);
-    }
-
-    checks
 }
 
 async fn check_url(url: &str) -> Check {
@@ -366,39 +212,18 @@ fn first_line(text: &str) -> String {
         .to_string()
 }
 
-pub async fn validate(params: &HardforkParams, project: &Project, pipeline: &str) -> Validation {
-    let mut checks = check_offline(params);
-    checks.extend(check_online(params, project).await);
-    Validation {
-        checks,
-        env: params.to_env(),
-        pipeline: pipeline.to_string(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn params() -> HardforkParams {
-        HardforkParams {
-            codenames_config: "Jammy_Amd64".into(),
-            network: "Devnet".into(),
-            genesis_timestamp: "2026-08-08T21:00:00.00Z".into(),
-            config_json_gz_url: "https://storage.googleapis.com/bucket/config.json.gz".into(),
-            precomputed_fork_block_prefix: Some("gs://mesa-hf-precomputed-blocks/x".into()),
-            use_artifacts_from_buildkite_build: Some("019fe333-ee52-45fa-8404-ba189bc1b57b".into()),
-            use_generic_dockers_from_version: Some("4.0.0-rc1-devnet-dryrun-ee5cb7f".into()),
-            repo: Some("Nightly".into()),
-            mina_ledger_s3_bucket: Some(
-                "https://s3-us-west-2.amazonaws.com/snark-keys.o1test.net".into(),
-            ),
-            version: None,
-            branch: "devnet-dryrun".into(),
-        }
+    fn env(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
-    fn failures(checks: &[Check]) -> Vec<&str> {
+    fn failed(checks: &[Check]) -> Vec<&str> {
         checks
             .iter()
             .filter(|c| c.has_failed())
@@ -407,112 +232,70 @@ mod tests {
     }
 
     #[test]
-    fn a_realistic_parameter_set_passes_the_offline_checks() {
-        assert!(failures(&check_offline(&params())).is_empty());
-    }
-
-    #[test]
-    fn the_environment_block_matches_what_the_pipeline_expects() {
-        let env = params().to_env();
-        assert_eq!(env.get("CODENAMES_CONFIG").unwrap(), "Jammy_Amd64");
-        assert_eq!(env.get("GIT_LFS_SKIP_SMUDGE").unwrap(), "1");
-        assert_eq!(
-            env.get("USE_ARTIFACTS_FROM_BUILDKITE_BUILD").unwrap(),
-            "019fe333-ee52-45fa-8404-ba189bc1b57b"
-        );
-        // An unset optional is absent, not empty: the pipeline's script tests
-        // for emptiness to decide whether the value was given.
-        assert!(!env.contains_key("VERSION"));
-    }
-
-    #[test]
-    fn blank_optionals_are_left_out_entirely() {
-        let mut p = params();
-        p.version = Some("   ".into());
-        assert!(!p.to_env().contains_key("VERSION"));
+    fn a_realistic_codename_config_passes() {
+        let checks = vec![check_codenames("Jammy_Amd64, Noble_Arm64")];
+        assert!(failed(&checks).is_empty());
     }
 
     #[test]
     fn a_lowercase_codename_is_rejected() {
-        let mut p = params();
-        p.codenames_config = "jammy_Amd64".into();
-        assert_eq!(failures(&check_offline(&p)), vec!["CODENAMES_CONFIG"]);
+        assert!(check_codenames("jammy_Amd64").has_failed());
     }
 
     #[test]
     fn an_unknown_architecture_is_rejected() {
-        let mut p = params();
-        p.codenames_config = "Jammy_Riscv".into();
-        assert_eq!(failures(&check_offline(&p)), vec!["CODENAMES_CONFIG"]);
+        assert!(check_codenames("Jammy_Riscv").has_failed());
     }
 
     #[test]
-    fn several_codename_entries_are_accepted() {
-        let mut p = params();
-        p.codenames_config = "Jammy_Amd64, Noble_Arm64".into();
-        assert!(failures(&check_offline(&p)).is_empty());
+    fn a_codename_without_an_architecture_is_rejected() {
+        assert!(check_codenames("Jammy").has_failed());
+        assert!(check_codenames("").has_failed());
     }
 
     #[test]
-    fn a_timestamp_without_z_is_rejected() {
-        let mut p = params();
-        p.genesis_timestamp = "2026-08-08T21:00:00.00".into();
-        assert_eq!(failures(&check_offline(&p)), vec!["GENESIS_TIMESTAMP"]);
-    }
-
-    #[test]
-    fn an_unparseable_timestamp_is_rejected() {
-        let mut p = params();
-        p.genesis_timestamp = "not-a-date-Z".into();
-        assert_eq!(failures(&check_offline(&p)), vec!["GENESIS_TIMESTAMP"]);
-    }
-
-    #[test]
-    fn a_build_number_in_place_of_a_uuid_is_rejected() {
-        let mut p = params();
-        p.use_artifacts_from_buildkite_build = Some("1305".into());
-        assert_eq!(
-            failures(&check_offline(&p)),
-            vec!["USE_ARTIFACTS_FROM_BUILDKITE_BUILD"]
-        );
+    fn a_timestamp_must_be_utc_and_parse() {
+        assert!(!check_timestamp("2026-08-08T21:00:00.00Z").has_failed());
+        // Local time makes the automatic and legacy paths disagree.
+        assert!(check_timestamp("2026-08-08T21:00:00.00").has_failed());
+        assert!(check_timestamp("not-a-date-Z").has_failed());
+        assert!(check_timestamp("").has_failed());
     }
 
     #[test]
     fn uuid_recognition() {
         assert!(looks_like_uuid("019fe333-ee52-45fa-8404-ba189bc1b57b"));
+        assert!(!looks_like_uuid("1305"));
         assert!(!looks_like_uuid("019fe333ee5245fa8404ba189bc1b57b"));
-        assert!(!looks_like_uuid("zzzfe333-ee52-45fa-8404-ba189bc1b57b"));
         assert!(!looks_like_uuid(""));
     }
 
-    #[test]
-    fn an_unknown_network_or_repo_is_rejected() {
-        let mut p = params();
-        p.network = "Testnet".into();
-        p.repo = Some("Wherever".into());
-        let checks = check_offline(&p);
-        let failed = failures(&checks);
-        assert!(failed.contains(&"NETWORK"));
-        assert!(failed.contains(&"REPO"));
+    #[tokio::test]
+    async fn deep_checks_only_speak_about_the_fields_present() {
+        // No network is touched: none of these keys are set.
+        let checks = deep_checks(&env(&[("NETWORK", "Devnet")]), &test_project()).await;
+        assert!(checks.is_empty());
     }
 
-    #[test]
-    fn a_validation_with_any_failure_is_not_submittable() {
-        let validation = Validation {
-            checks: vec![
-                Check::passed("a", "fine"),
-                Check::unknown("b", "could not check"),
-            ],
-            env: BTreeMap::new(),
-            pipeline: "p".into(),
-        };
-        assert!(validation.is_submittable(), "unknown alone must not block");
+    #[tokio::test]
+    async fn deep_checks_cover_the_codenames_and_timestamp_offline() {
+        let checks = deep_checks(
+            &env(&[
+                ("CODENAMES_CONFIG", "Jammy_Amd64"),
+                ("GENESIS_TIMESTAMP", "2026-08-08T21:00:00.00Z"),
+            ]),
+            &test_project(),
+        )
+        .await;
+        assert_eq!(checks.len(), 2);
+        assert!(failed(&checks).is_empty());
+    }
 
-        let blocked = Validation {
-            checks: vec![Check::failed("a", "wrong")],
-            env: BTreeMap::new(),
-            pipeline: "p".into(),
-        };
-        assert!(!blocked.is_submittable());
+    fn test_project() -> Project {
+        crate::config::Registry::builtin()
+            .unwrap()
+            .project("mina")
+            .unwrap()
+            .clone()
     }
 }
