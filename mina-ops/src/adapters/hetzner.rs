@@ -54,6 +54,27 @@ pub struct CacheEntry {
     pub is_build: bool,
 }
 
+/// One image tarball in `docker-cache`.
+///
+/// The cache stores images as `<image>/<tag>.tar.zst`, where the tag is the
+/// docker tag with its parts joined by hyphens and the short commit first.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CachedImage {
+    pub image: String,
+    pub filename: String,
+    /// The filename without `.tar.zst` — the docker tag it restores as.
+    pub tag: String,
+    pub commit: Option<String>,
+    pub codename: Option<String>,
+    pub arch: Option<String>,
+    /// Whatever sits between the codename and the architecture: the network,
+    /// and any profile such as `generic`.
+    pub variant: Option<String>,
+    pub size: Option<String>,
+    pub size_bytes: Option<u64>,
+    pub modified: Option<String>,
+}
+
 /// What was found under one build's cache folder.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedBuild {
@@ -288,6 +309,26 @@ impl CacheClient {
             .collect();
         entries.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(entries)
+    }
+
+    /// Image tarballs under a cache entry, `docker-cache` in practice.
+    ///
+    /// One `ls -lR` returns every image with its size and date, because the
+    /// tree is two levels deep and holds tens of files rather than thousands.
+    pub async fn images_for_entry(&self, entry: &str) -> OpsResult<Vec<CachedImage>> {
+        if !Self::is_safe_entry_name(entry) {
+            return Err(OpsError::Other(format!(
+                "'{entry}' is not a valid cache entry name"
+            )));
+        }
+        match &self.route {
+            CacheRoute::Ssh(ssh) => {
+                let base = format!("{}/{}", ssh.root.trim_end_matches('/'), entry);
+                let output = self.ssh_command(ssh, &format!("ls -lR {base}")).await?;
+                Ok(parse_image_listing(&output))
+            }
+            CacheRoute::Local(root) => Ok(local_images(&root.join(entry))),
+        }
     }
 
     /// Removes one build's folder. The caller is responsible for the checks;
@@ -580,6 +621,140 @@ fn expand_home(path: &str) -> PathBuf {
     }
 }
 
+/// Debian codenames that appear in an image tag.
+const IMAGE_CODENAMES: [&str; 6] = ["bullseye", "bookworm", "focal", "jammy", "noble", "buster"];
+const IMAGE_ARCHES: [&str; 2] = ["amd64", "arm64"];
+const IMAGE_SUFFIX: &str = ".tar.zst";
+
+/// `ls -lR` output: a directory header, then its long-format entries.
+pub fn parse_image_listing(output: &str) -> Vec<CachedImage> {
+    let mut images = Vec::new();
+    let mut current = String::new();
+
+    for line in output.lines() {
+        let line = line.trim_end();
+        if let Some(header) = line.strip_suffix(':') {
+            current = header
+                .trim()
+                .rsplit('/')
+                .next()
+                .unwrap_or_default()
+                .to_string();
+            continue;
+        }
+        // Only regular files; directories and the `total` line are not images.
+        if !line.starts_with('-') {
+            continue;
+        }
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 9 {
+            continue;
+        }
+        let filename = fields[8..].join(" ");
+        if !filename.ends_with(IMAGE_SUFFIX) {
+            continue;
+        }
+        let size_bytes: Option<u64> = fields[4].parse().ok();
+        images.push(image_from_filename(
+            &current,
+            &filename,
+            size_bytes,
+            Some(format!("{} {} {}", fields[5], fields[6], fields[7])),
+        ));
+    }
+
+    images
+}
+
+fn local_images(dir: &Path) -> Vec<CachedImage> {
+    let mut images = Vec::new();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return images;
+    };
+    for image_dir in entries.flatten() {
+        if !image_dir.path().is_dir() {
+            continue;
+        }
+        let image = image_dir.file_name().to_string_lossy().to_string();
+        let Ok(files) = std::fs::read_dir(image_dir.path()) else {
+            continue;
+        };
+        for file in files.flatten() {
+            let filename = file.file_name().to_string_lossy().to_string();
+            if !filename.ends_with(IMAGE_SUFFIX) {
+                continue;
+            }
+            let size = file.metadata().ok().map(|m| m.len());
+            images.push(image_from_filename(&image, &filename, size, None));
+        }
+    }
+    images
+}
+
+/// Splits `<commit>-<codename>-<variant…>-<arch>` without inventing parts it
+/// cannot find: an unrecognised segment stays in `variant` rather than being
+/// guessed at.
+pub fn image_from_filename(
+    image: &str,
+    filename: &str,
+    size_bytes: Option<u64>,
+    modified: Option<String>,
+) -> CachedImage {
+    let tag = filename.trim_end_matches(IMAGE_SUFFIX).to_string();
+    let mut parts: Vec<&str> = tag.split('-').collect();
+
+    let commit = parts
+        .first()
+        .filter(|p| p.len() >= 6 && p.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|p| p.to_string());
+    if commit.is_some() {
+        parts.remove(0);
+    }
+
+    let arch = parts
+        .last()
+        .filter(|p| IMAGE_ARCHES.contains(p))
+        .map(|p| p.to_string());
+    if arch.is_some() {
+        parts.pop();
+    }
+
+    let codename = parts
+        .iter()
+        .position(|p| IMAGE_CODENAMES.contains(p))
+        .map(|index| parts.remove(index).to_string());
+
+    let variant = (!parts.is_empty()).then(|| parts.join("-"));
+
+    CachedImage {
+        image: image.to_string(),
+        filename: filename.to_string(),
+        tag,
+        commit,
+        codename,
+        arch,
+        variant,
+        size: size_bytes.map(bytes_to_human_size),
+        size_bytes,
+        modified,
+    }
+}
+
+fn bytes_to_human_size(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "K", "M", "G", "T"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes}B")
+    } else {
+        format!("{value:.1}{}", UNITS[unit])
+    }
+}
+
 /// A Buildkite build UUID, which is what a cache build folder is named after.
 pub fn looks_like_build_id(name: &str) -> bool {
     let groups: Vec<&str> = name.split('-').collect();
@@ -705,6 +880,63 @@ mod tests {
     #[test]
     fn entries_before_any_directory_header_are_ignored() {
         assert!(parse_recursive_listing("stray_1.0_amd64.deb\n", "/cache/b/debians").is_empty());
+    }
+
+    #[test]
+    fn image_tags_split_into_commit_codename_variant_and_arch() {
+        let image = image_from_filename(
+            "mina-toolchain",
+            "169fd52-bookworm-devnet-arm64.tar.zst",
+            Some(1024 * 1024 * 1024),
+            Some("Jul 27 15:51".into()),
+        );
+        assert_eq!(image.image, "mina-toolchain");
+        assert_eq!(image.tag, "169fd52-bookworm-devnet-arm64");
+        assert_eq!(image.commit.as_deref(), Some("169fd52"));
+        assert_eq!(image.codename.as_deref(), Some("bookworm"));
+        assert_eq!(image.arch.as_deref(), Some("arm64"));
+        assert_eq!(image.variant.as_deref(), Some("devnet"));
+        assert_eq!(image.size.as_deref(), Some("1.0G"));
+    }
+
+    #[test]
+    fn an_absent_architecture_is_left_absent() {
+        let image = image_from_filename(
+            "mina-daemon",
+            "12cec3a-bullseye-devnet-generic.tar.zst",
+            None,
+            None,
+        );
+        assert_eq!(image.arch, None, "amd64 is implied, never invented");
+        assert_eq!(image.variant.as_deref(), Some("devnet-generic"));
+        assert_eq!(image.size, None);
+    }
+
+    #[test]
+    fn a_doubled_network_stays_visible_rather_than_being_tidied_away() {
+        // Tags like this came from a real bug; hiding it would hide the bug.
+        let image = image_from_filename(
+            "mina-daemon",
+            "214894f-bullseye-devnet-devnet-generic.tar.zst",
+            None,
+            None,
+        );
+        assert_eq!(image.variant.as_deref(), Some("devnet-devnet-generic"));
+    }
+
+    #[test]
+    fn image_listings_read_sizes_and_skip_non_images() {
+        let listing = "/cache/docker-cache/mina-daemon:\n\
+                       total 623\n\
+                       -rwxr--r-- 1 u1 u1 9308937114 Jul 27 15:51 12cec3a-bullseye-devnet-generic.tar.zst\n\
+                       -rw-r--r-- 1 u1 u1 12 Jul 27 15:51 notes.txt\n\
+                       drwxr-xr-x 2 u1 u1 4096 Jul 27 15:51 subdir\n";
+        let images = parse_image_listing(listing);
+        assert_eq!(images.len(), 1, "only .tar.zst files are images");
+        assert_eq!(images[0].image, "mina-daemon");
+        assert_eq!(images[0].size_bytes, Some(9_308_937_114));
+        assert_eq!(images[0].size.as_deref(), Some("8.7G"));
+        assert_eq!(images[0].modified.as_deref(), Some("Jul 27 15:51"));
     }
 
     #[test]

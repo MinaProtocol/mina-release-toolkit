@@ -429,6 +429,10 @@ async function cacheDetail(buildId) {
   cell.innerHTML = `<p class="muted" style="padding:8px 10px">reading…</p>`;
   try {
     const detail = await api("/api/cache/detail?build_id=" + encodeURIComponent(buildId));
+    if (detail.images && detail.images.length) {
+      cell.innerHTML = renderImages(detail);
+      return;
+    }
     const byCodename = {};
     for (const deb of detail.debians) (byCodename[deb.codename] ||= []).push(deb);
     cell.innerHTML = `<div class="body" style="padding:10px 14px">
@@ -443,6 +447,40 @@ async function cacheDetail(buildId) {
   } catch (e) {
     cell.innerHTML = `<p class="bad" style="padding:8px 10px">${escapeHtml(e.message)}</p>`;
   }
+}
+
+/// docker-cache: one tarball per docker tag, grouped by image.
+function renderImages(detail) {
+  const byImage = {};
+  for (const image of detail.images) (byImage[image.image] ||= []).push(image);
+
+  return `<div class="body" style="padding:10px 14px">
+    <p class="muted">${detail.images.length} image tarballs across
+      ${Object.keys(byImage).length} images — restored as
+      &lt;image&gt;:&lt;tag&gt;</p>` +
+    Object.entries(byImage).sort((a, b) => b[1].length - a[1].length).map(([image, items]) => {
+      const bytes = items.reduce((sum, i) => sum + (i.size_bytes || 0), 0);
+      return `<details class="group"><summary>${escapeHtml(image)}
+        <span class="tally"><span class="pill">${items.length} tags</span>
+        <span class="pill">${escapeHtml(humanBytes(bytes))}</span></span></summary>
+        <div class="body"><table>
+          <tr><th>Commit</th><th>Codename</th><th>Variant</th><th>Arch</th><th>Size</th><th>Modified</th></tr>` +
+          items.sort((a, b) => (b.size_bytes || 0) - (a.size_bytes || 0)).map(i =>
+            `<tr><td>${escapeHtml(i.commit || "—")}</td>
+                 <td>${escapeHtml(i.codename || "—")}</td>
+                 <td>${escapeHtml(i.variant || "—")}</td>
+                 <td>${escapeHtml(i.arch || "amd64")}</td>
+                 <td>${escapeHtml(i.size || "—")}</td>
+                 <td class="muted">${escapeHtml(i.modified || "—")}</td></tr>`).join("") +
+        `</table></div></details>`;
+    }).join("") + `</div>`;
+}
+
+function humanBytes(bytes) {
+  const units = ["B", "K", "M", "G", "T"];
+  let value = bytes, unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+  return unit === 0 ? `${bytes}B` : `${value.toFixed(1)}${units[unit]}`;
 }
 
 function askDelete(buildId, size) {

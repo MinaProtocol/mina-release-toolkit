@@ -27,6 +27,7 @@
 //! No CORS headers are sent, by omission and on purpose.
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
@@ -52,6 +53,10 @@ const CONSOLE: &str = include_str!("console.html");
 pub struct ServeOptions {
     pub port: u16,
     pub project: String,
+    /// Keep the token between runs, so one bookmark stays valid.
+    pub persist_token: bool,
+    /// Replace a stored token with a new one.
+    pub rotate_token: bool,
 }
 
 #[derive(Clone)]
@@ -68,19 +73,123 @@ impl AppState {
     }
 }
 
-/// 32 random bytes, hex encoded. Regenerated on every start, so a token that
-/// leaks into a shell history is useless once the server stops.
+/// 32 random bytes, hex encoded.
 fn new_token() -> String {
     let mut bytes = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut bytes);
     hex::encode(bytes)
 }
 
+pub fn token_path() -> Option<PathBuf> {
+    dirs::state_dir()
+        .or_else(dirs::data_local_dir)
+        .map(|dir| dir.join("mina-ops").join("console-token"))
+}
+
+fn looks_like_token(value: &str) -> bool {
+    value.len() == 64 && value.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Where the token came from, so the operator is told rather than left to
+/// guess whether their bookmark still works.
+pub enum TokenOrigin {
+    Fresh,
+    Reused,
+    Stored,
+}
+
+/// A stored token trades a little secrecy for a bookmark that keeps working.
+///
+/// The file is owner-only. If its permissions have drifted wider they are
+/// tightened rather than trusted, because a token another local account can
+/// read is a token that account can use.
+fn resolve_token(options: &ServeOptions) -> (String, TokenOrigin, Vec<String>) {
+    let mut notes = Vec::new();
+
+    if !options.persist_token {
+        return (new_token(), TokenOrigin::Fresh, notes);
+    }
+
+    let Some(path) = token_path() else {
+        notes.push("no state directory available, so the token is not stored".to_string());
+        return (new_token(), TokenOrigin::Fresh, notes);
+    };
+
+    if !options.rotate_token {
+        if let Ok(stored) = std::fs::read_to_string(&path) {
+            let stored = stored.trim().to_string();
+            if looks_like_token(&stored) {
+                if let Some(note) = tighten_permissions(&path) {
+                    notes.push(note);
+                }
+                return (stored, TokenOrigin::Reused, notes);
+            }
+            notes.push(format!(
+                "{} did not hold a valid token, so a new one was written",
+                path.display()
+            ));
+        }
+    }
+
+    let token = new_token();
+    match store_token(&path, &token) {
+        Ok(()) => (token, TokenOrigin::Stored, notes),
+        Err(e) => {
+            notes.push(format!(
+                "could not store the token in {}: {e}",
+                path.display()
+            ));
+            (token, TokenOrigin::Fresh, notes)
+        }
+    }
+}
+
+fn store_token(path: &Path, token: &str) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    use std::io::Write;
+    file.write_all(token.as_bytes())?;
+    // An existing file keeps its old mode, so set it explicitly as well.
+    tighten_permissions(path);
+    Ok(())
+}
+
+/// Returns a note when the permissions had to be corrected.
+fn tighten_permissions(path: &Path) -> Option<String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let metadata = std::fs::metadata(path).ok()?;
+        let mode = metadata.permissions().mode() & 0o777;
+        if mode & 0o077 != 0 {
+            let mut permissions = metadata.permissions();
+            permissions.set_mode(0o600);
+            std::fs::set_permissions(path, permissions).ok()?;
+            return Some(format!(
+                "{} was readable by others ({mode:o}); tightened to 600",
+                path.display()
+            ));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    None
+}
+
 pub async fn serve(registry: Registry, options: ServeOptions) -> OpsResult<()> {
     // Fail before binding if the project is unknown.
     registry.project(&options.project)?;
 
-    let token = new_token();
+    let (token, origin, notes) = resolve_token(&options);
     let state = AppState {
         registry: Arc::new(registry),
         project: options.project,
@@ -105,8 +214,25 @@ pub async fn serve(registry: Registry, options: ServeOptions) -> OpsResult<()> {
         .await
         .map_err(|e| OpsError::Other(format!("cannot bind {address}: {e}")))?;
 
+    for note in &notes {
+        eprintln!("note: {note}");
+    }
     println!("mina-ops console: http://{address}/?t={token}");
-    println!("Open that URL. The token is required, and changes on every start.");
+    match origin {
+        TokenOrigin::Reused => println!(
+            "The stored token was reused, so a bookmark of this URL keeps working. \
+             Use --rotate-token to replace it."
+        ),
+        TokenOrigin::Stored => println!(
+            "This token is stored in {} and will be reused next time.",
+            token_path()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default()
+        ),
+        TokenOrigin::Fresh => {
+            println!("The token is required, and changes on every start.")
+        }
+    }
 
     axum::serve(listener, app)
         .await
@@ -601,11 +727,60 @@ mod tests {
     }
 
     #[test]
-    fn tokens_differ_between_starts_and_are_long_enough() {
+    fn tokens_differ_and_are_long_enough() {
         let first = new_token();
         let second = new_token();
         assert_ne!(first, second);
         assert_eq!(first.len(), 64, "32 bytes, hex encoded");
+        assert!(looks_like_token(&first));
+    }
+
+    #[test]
+    fn only_a_full_hex_token_is_accepted_from_disk() {
+        assert!(looks_like_token(&"a".repeat(64)));
+        assert!(!looks_like_token(&"a".repeat(63)));
+        assert!(!looks_like_token(&"z".repeat(64)));
+        assert!(!looks_like_token(""));
+    }
+
+    #[test]
+    fn a_stored_token_is_written_owner_only_and_read_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("console-token");
+        let token = new_token();
+
+        store_token(&path, &token).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), token);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(
+                mode, 0o600,
+                "a token another account can read is a token they can use"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn permissions_that_drifted_wider_are_tightened_not_trusted() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("console-token");
+        store_token(&path, &new_token()).unwrap();
+
+        let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o644);
+        std::fs::set_permissions(&path, permissions).unwrap();
+
+        let note = tighten_permissions(&path);
+        assert!(note.is_some(), "the correction should be reported");
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        // Already correct: nothing to say.
+        assert!(tighten_permissions(&path).is_none());
     }
 
     #[test]

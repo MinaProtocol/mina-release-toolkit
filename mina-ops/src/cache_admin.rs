@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::adapters::buildkite::{token_from_environment, BuildkiteClient};
-use crate::adapters::hetzner::{self, CacheClient, CacheEntry, CachedDeb};
+use crate::adapters::hetzner::{self, CacheClient, CacheEntry, CachedDeb, CachedImage};
 use crate::config::Project;
 use crate::error::{OpsError, OpsResult};
 
@@ -31,6 +31,10 @@ pub struct CacheDetail {
     pub build_id: String,
     pub source: String,
     pub debians: Vec<CachedDeb>,
+    /// Image tarballs, for `docker-cache`. A folder holds packages or images,
+    /// not both, so one of the two lists is always empty.
+    #[serde(default)]
+    pub images: Vec<CachedImage>,
     /// Distinct versions across the packages, which is usually the one thing
     /// somebody wants from a build folder.
     pub versions: Vec<String>,
@@ -88,6 +92,9 @@ impl Guard {
     }
 }
 
+/// The shared folder that holds docker images rather than packages.
+pub const DOCKER_CACHE: &str = "docker-cache";
+
 fn client(project: &Project) -> OpsResult<CacheClient> {
     hetzner::resolve_route(project.cache.as_ref())
         .map(CacheClient::new)
@@ -139,6 +146,23 @@ pub async fn detail(project: &Project, entry: &str) -> OpsResult<CacheDetail> {
     }
     let client = client(project)?;
     let source = client.route().describe();
+
+    // docker-cache holds image tarballs rather than packages, so it is read
+    // with the reader that understands them.
+    if entry == DOCKER_CACHE {
+        let images = client.images_for_entry(entry).await?;
+        let mut versions: Vec<String> = images.iter().filter_map(|i| i.commit.clone()).collect();
+        versions.sort();
+        versions.dedup();
+        return Ok(CacheDetail {
+            build_id: entry.to_string(),
+            source,
+            debians: Vec::new(),
+            images,
+            versions,
+        });
+    }
+
     let (_, debians) = client.debians_for_entry(entry).await;
 
     let mut versions: Vec<String> = debians.iter().filter_map(|d| d.version.clone()).collect();
@@ -149,6 +173,7 @@ pub async fn detail(project: &Project, entry: &str) -> OpsResult<CacheDetail> {
         build_id: entry.to_string(),
         source,
         debians,
+        images: Vec::new(),
         versions,
     })
 }

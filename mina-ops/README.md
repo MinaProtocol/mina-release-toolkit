@@ -174,6 +174,21 @@ The CI cache is where Mina's packages actually live, and it grows by roughly
 cache in about a second, because `du --max-depth=1` and `ls -lt` each walk only
 the top level — and expanding a build shows its packages and versions.
 
+Three shapes live in that cache, and the tab reads all of them:
+
+| Entry | Holds | Layout |
+| --- | --- | --- |
+| `<build-uuid>` | packages a build produced | `debians/<codename>/<pkg>_<version>_<arch>.deb` |
+| `legacy` | restored packages kept outside any build | the same, and it is the folder people most often open |
+| `debs` | a few packages per codename | `<codename>/…`, with no `debians` level |
+| `docker-cache` | image tarballs, 705 GB of them | `<image>/<commit>-<codename>[-<variant>][-<arch>].tar.zst` |
+
+Expanding `docker-cache` groups the tarballs by image with their sizes, and
+splits each tag into commit, codename, variant and architecture. Unrecognised
+parts stay in the variant rather than being guessed at — a tag carrying a
+doubled network shows exactly that, because tidying it away would hide the bug
+that produced it.
+
 Removal is the one destructive operation in this tool, and it acts on the
 cache Buildkite reads from. Four guards run **on the server**, in this order,
 and all four must pass:
