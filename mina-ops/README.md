@@ -35,6 +35,7 @@ cargo build --release
 | Debian repositories | whatever `deb-s3` and `aws` already use | package listings |
 | Docker registries | whatever `docker` already uses | image presence |
 | GitHub | whatever `gh` already uses (`gh auth login`) | the pull request behind a commit |
+| CI cache | a mounted path, or ssh — see "The CI cache" below | packages a build produced |
 
 A missing tool or credential is reported as `unknown`, never as `missing`. See
 "Honesty" below.
@@ -155,6 +156,44 @@ Set `BUILDKITE_API_TOKEN` in the environment the server starts in, or write it
 to `~/.config/mina-ops/buildkite-token`. Without it the Debian and Docker
 checks still work and the missing token is reported as a warning.
 
+## The CI cache
+
+Mina's pipelines do not upload `.deb` files to Buildkite. They put them in the
+shared cache on the Hetzner storage box, keyed by the Buildkite **build UUID**
+— which is what `USE_ARTIFACTS_FROM_BUILDKITE_BUILD` takes:
+
+```text
+<root>/<build-uuid>/debians/<codename>/<package>_<version>_<arch>.deb
+```
+
+The architecture is part of the filename, not a directory. (`buildkite-cache-manager`'s
+README documents an extra `<arch>/` level; the cache observed in August 2026
+has no such level. Both shapes are accepted.)
+
+Nothing about the cache is committed here, because this repository is public.
+Configure it in `~/.config/mina-ops/projects.yaml` under `cache.root` or
+`cache.ssh`, or through the environment:
+
+```bash
+export MINA_OPS_CACHE_ROOT=/var/storagebox          # a mounted path, as CI has
+# or
+export MINA_OPS_CACHE_SSH_HOST=... MINA_OPS_CACHE_SSH_USER=... \
+       MINA_OPS_CACHE_SSH_ROOT=... MINA_OPS_CACHE_SSH_PORT=23 \
+       MINA_OPS_CACHE_SSH_KEY=~/.ssh/storagebox.key
+```
+
+Two behaviours are deliberate:
+
+- **An empty cache root reports `unknown`, not "nothing cached".** An
+  unmounted share looks exactly like an empty one, and reporting a miss would
+  send somebody to rebuild packages that are sitting on the storage box.
+- **A configured mount is used only when it holds something**, otherwise ssh
+  is tried. That is what makes the same configuration work in CI and on a
+  workstation where the share is not mounted.
+
+The storage box runs a restricted shell: no `cd`, no `&&`, no glob expansion.
+The lookup is therefore a single `ls -R` per build.
+
 ## How a commit becomes a version
 
 Mina package versions embed the 7-character short commit, for example
@@ -164,9 +203,11 @@ Mina package versions embed the 7-character short commit, for example
 2. The `.deb` artifacts of the commit's Buildkite builds. **Rarely fires for
    Mina**: its pipelines upload logs and tools to Buildkite and put packages in
    the CI cache, so most builds carry no `.deb` at all.
-3. A scan of the Debian repositories for a version ending in `-<short commit>`.
-   This is the normal path, and it keeps working long after Buildkite has
-   dropped the build.
+3. The packages the build left in the CI cache. This answers for a commit
+   whose packages have not been published anywhere yet — the state a fresh
+   build is in.
+4. A scan of the Debian repositories for a version ending in `-<short commit>`.
+   This keeps working long after Buildkite has dropped the build.
 
 When no version can be resolved, the tool says so and checks nothing, rather
 than reporting every package as missing.

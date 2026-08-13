@@ -17,6 +17,7 @@ use crate::adapters::apt::{AptClient, ListingKey, Listings};
 use crate::adapters::buildkite::{token_from_environment, BuildkiteClient};
 use crate::adapters::docker::DockerClient;
 use crate::adapters::github::GithubClient;
+use crate::adapters::hetzner::{self, CacheClient, CachedBuild};
 use crate::config::Project;
 use crate::error::{OpsError, OpsResult};
 use crate::git;
@@ -40,6 +41,7 @@ pub struct InventoryQuery {
     pub skip_debian: bool,
     pub skip_docker: bool,
     pub skip_github: bool,
+    pub skip_cache: bool,
 }
 
 impl InventoryQuery {
@@ -65,6 +67,7 @@ pub async fn collect(
 
     let builds = collect_builds(project, query, &mut warnings).await;
     let pull_requests = collect_pull_requests(project, query, &mut warnings).await;
+    let cached_builds = collect_cached_builds(project, query, &builds, &mut warnings).await;
 
     let listings = if query.skip_debian {
         Listings::default()
@@ -77,7 +80,7 @@ pub async fn collect(
     let (version, version_source) = if builds_only {
         (None, None)
     } else {
-        resolve_version(query, &builds, &listings, &mut warnings)
+        resolve_version(query, &builds, &cached_builds, &listings, &mut warnings)
     };
 
     let debians = match &version {
@@ -112,6 +115,7 @@ pub async fn collect(
         artifact_coverage_requested: !builds_only,
         pull_requests,
         builds,
+        cached_builds,
         debians,
         dockers,
         warnings,
@@ -203,6 +207,48 @@ async fn collect_pull_requests(
     }
 }
 
+/// What each of the commit's builds left in the CI cache.
+///
+/// Bounded by `max_builds` for the same reason the artifact listing is: each
+/// lookup is a round trip.
+async fn collect_cached_builds(
+    project: &Project,
+    query: &InventoryQuery,
+    builds: &[BuildSummary],
+    warnings: &mut Vec<String>,
+) -> Vec<CachedBuild> {
+    if query.skip_cache || builds.is_empty() {
+        return Vec::new();
+    }
+
+    let Some(route) = hetzner::resolve_route(project.cache.as_ref()) else {
+        warnings.push(
+            "no CI cache configured, so cached packages were not checked. Set cache.root or \
+             cache.ssh in your projects.yaml, or MINA_OPS_CACHE_ROOT / MINA_OPS_CACHE_SSH_*"
+                .to_string(),
+        );
+        return Vec::new();
+    };
+
+    let client = CacheClient::new(route);
+    let source = client.route().describe();
+    let wanted = builds.iter().take(query.max_builds);
+
+    let mut cached = Vec::new();
+    for build in wanted {
+        let (presence, debians) = client.debians_for_build(&build.id).await;
+        cached.push(CachedBuild {
+            build_id: build.id.clone(),
+            build_number: Some(build.number),
+            pipeline: Some(build.pipeline.clone()),
+            source: source.clone(),
+            presence,
+            debians,
+        });
+    }
+    cached
+}
+
 /// Every (bucket, component, codename, arch) listing the query needs.
 fn listing_keys(project_channel: &str, codenames: &[String]) -> Vec<ListingKey> {
     let mut keys = Vec::new();
@@ -269,6 +315,7 @@ async fn collect_listings(
 fn resolve_version(
     query: &InventoryQuery,
     builds: &[BuildSummary],
+    cached_builds: &[CachedBuild],
     listings: &Listings,
     warnings: &mut Vec<String>,
 ) -> (Option<String>, Option<VersionSource>) {
@@ -286,6 +333,22 @@ fn resolve_version(
 
     if let Some(commit) = &query.commit {
         let short = git::short_hash(commit);
+
+        // The cache holds a build's packages before anything is published,
+        // so it answers for commits the repositories have never seen.
+        let suffix = format!("-{short}");
+        let from_cache: Vec<String> = cached_builds
+            .iter()
+            .flat_map(|cached| cached.debians.iter())
+            .filter_map(|deb| deb.version.clone())
+            .filter(|version| version.ends_with(&suffix))
+            .collect();
+        let mut distinct_cache = from_cache.clone();
+        distinct_cache.dedup();
+        if let Some(version) = first_unique(&distinct_cache, "the CI cache", warnings) {
+            return (Some(version), Some(VersionSource::CiCache));
+        }
+
         let from_repos: Vec<String> = listings
             .ok
             .values()
@@ -514,6 +577,7 @@ mod tests {
             skip_debian: false,
             skip_docker: false,
             skip_github: true,
+            skip_cache: true,
         }
     }
 
@@ -538,7 +602,7 @@ mod tests {
         let mut q = query();
         q.version = Some("9.9.9-deadbee".to_string());
         let mut warnings = Vec::new();
-        let (version, source) = resolve_version(&q, &[], &Listings::default(), &mut warnings);
+        let (version, source) = resolve_version(&q, &[], &[], &Listings::default(), &mut warnings);
         assert_eq!(version.unwrap(), "9.9.9-deadbee");
         assert_eq!(source.unwrap(), VersionSource::Given);
     }
@@ -558,7 +622,7 @@ mod tests {
         );
 
         let mut warnings = Vec::new();
-        let (version, source) = resolve_version(&q, &[], &listings, &mut warnings);
+        let (version, source) = resolve_version(&q, &[], &[], &listings, &mut warnings);
         assert_eq!(version.unwrap(), "3.2.0-alpha1-143b9cc");
         assert_eq!(source.unwrap(), VersionSource::DebianRepository);
     }
@@ -567,7 +631,7 @@ mod tests {
     fn unresolved_version_is_reported_not_guessed() {
         let q = query();
         let mut warnings = Vec::new();
-        let (version, source) = resolve_version(&q, &[], &Listings::default(), &mut warnings);
+        let (version, source) = resolve_version(&q, &[], &[], &Listings::default(), &mut warnings);
         assert!(version.is_none());
         assert!(source.is_none());
         assert!(warnings.iter().any(|w| w.contains("no version")));

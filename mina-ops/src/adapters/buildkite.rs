@@ -28,6 +28,7 @@ pub struct BuildkiteClient {
 
 #[derive(Debug, Deserialize)]
 struct ApiBuild {
+    id: String,
     number: u64,
     state: String,
     branch: String,
@@ -302,6 +303,7 @@ impl From<ApiBuild> for BuildSummary {
 
         BuildSummary {
             pipeline,
+            id: build.id,
             number: build.number,
             state: build.state,
             branch: build.branch,

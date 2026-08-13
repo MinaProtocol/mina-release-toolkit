@@ -40,3 +40,24 @@ projects:
         - noble
       # Build profile: null, "lightnet" or "instrumented".
       profile: null
+    # Where the CI cache lives. Mina's pipelines put .deb files here rather
+    # than in Buildkite artifacts, under <root>/<build-uuid>/debians/...
+    #
+    # Left unset on purpose: this repository is public. Set it in
+    # ~/.config/mina-ops/projects.yaml, or through the environment:
+    #
+    #   MINA_OPS_CACHE_ROOT       a mounted path, as CI has
+    #   MINA_OPS_CACHE_SSH_HOST   host, user, root (and optional port, key)
+    #   MINA_OPS_CACHE_SSH_USER
+    #   MINA_OPS_CACHE_SSH_ROOT
+    #   MINA_OPS_CACHE_SSH_PORT
+    #   MINA_OPS_CACHE_SSH_KEY
+    #
+    # cache:
+    #   root: /var/storagebox
+    #   ssh:
+    #     host: example.your-storagebox.de
+    #     user: u000000
+    #     port: 23
+    #     key: ~/.ssh/storagebox.key
+    #     root: /home/generic/cache-root

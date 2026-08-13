@@ -100,6 +100,10 @@ struct ArtifactsArgs {
 
     #[arg(long)]
     skip_github: bool,
+
+    /// Skip the CI cache, where Mina's .deb files actually live.
+    #[arg(long)]
+    skip_cache: bool,
 }
 
 #[derive(clap::Args)]
@@ -118,6 +122,9 @@ struct BuildsArgs {
 
     #[arg(long)]
     skip_github: bool,
+
+    #[arg(long)]
+    skip_cache: bool,
 }
 
 #[derive(clap::Args)]
@@ -193,6 +200,7 @@ async fn run(cli: &Cli) -> OpsResult<()> {
                 skip_debian: args.skip_debian,
                 skip_docker: args.skip_docker,
                 skip_github: args.skip_github,
+                skip_cache: args.skip_cache,
             };
 
             let inventory = inventory::collect(&cli.project, project, &query).await?;
@@ -213,6 +221,7 @@ async fn run(cli: &Cli) -> OpsResult<()> {
                 skip_debian: true,
                 skip_docker: true,
                 skip_github: args.skip_github,
+                skip_cache: args.skip_cache,
             };
             let inventory = inventory::collect(&cli.project, project, &query).await?;
             emit(cli, &inventory)?;

@@ -43,6 +43,9 @@ pub enum VersionSource {
     Given,
     /// Parsed from the `.deb` artifacts of a Buildkite build.
     BuildkiteArtifacts,
+    /// Parsed from the packages a build left in the CI cache. This answers
+    /// for builds whose packages have not been published anywhere yet.
+    CiCache,
     /// Found in a Debian repository by matching the commit's short hash.
     DebianRepository,
 }
@@ -50,6 +53,9 @@ pub enum VersionSource {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildSummary {
     pub pipeline: String,
+    /// Buildkite's own UUID for the build. The CI cache is keyed by it, not
+    /// by the build number.
+    pub id: String,
     pub number: u64,
     pub state: String,
     pub branch: String,
@@ -126,6 +132,10 @@ pub struct Inventory {
     #[serde(default)]
     pub pull_requests: Vec<crate::adapters::github::PullRequest>,
     pub builds: Vec<BuildSummary>,
+    /// What each build left in the CI cache. Mina's packages live there, not
+    /// in Buildkite artifacts.
+    #[serde(default)]
+    pub cached_builds: Vec<crate::adapters::hetzner::CachedBuild>,
     pub debians: Vec<DebianEntry>,
     pub dockers: Vec<DockerEntry>,
     /// Anything that limited the answer: a skipped check, a missing tool, a
@@ -179,6 +189,7 @@ mod tests {
     fn a_build_distinguishes_unlisted_artifacts_from_none() {
         let build = |count: Option<usize>| BuildSummary {
             pipeline: "mina".into(),
+            id: "019ff144-0cae-4a7a-8e92-56502df235cb".into(),
             number: 1,
             state: "passed".into(),
             branch: "compatible".into(),

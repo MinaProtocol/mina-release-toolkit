@@ -25,6 +25,11 @@ pub struct Project {
     pub apt: AptConfig,
     pub docker: DockerConfig,
     pub defaults: Defaults,
+    /// How to reach the CI cache. Absent by default: the real host and mount
+    /// point belong in the operator's own configuration, not in this public
+    /// repository.
+    #[serde(default)]
+    pub cache: Option<crate::adapters::hetzner::CacheConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
