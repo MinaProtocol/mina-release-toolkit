@@ -22,6 +22,8 @@ projects:
       # Defaults for `mina-ops nightly`.
       nightly_pipeline: mina-mainline-branches-nightlies
       nightly_branch: develop
+      # Pipeline the hardfork package-generation form triggers.
+      hardfork_pipeline: hardfork-package-generation-new
     apt:
       region: us-west-2
     docker:

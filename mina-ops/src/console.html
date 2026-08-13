@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mina-ops console</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1d21; --muted: #5f6672; --line: #e2e5ea;
+    --ok: #1a7f45; --bad: #b3261e; --warn: #8a6100; --accent: #2f5ecc;
+    --panel: #f7f8fa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d; --fg: #e8eaee; --muted: #99a1ad; --line: #2c3038;
+      --ok: #5fd08a; --bad: #ff8a80; --warn: #e3b341; --accent: #86a9f5;
+      --panel: #1c1f26;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex;
+    align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .01em; }
+  .muted { color: var(--muted); }
+  nav { display: flex; gap: 4px; padding: 10px 20px 0; }
+  nav button { background: none; border: 1px solid transparent; border-bottom: none;
+    padding: 7px 14px; border-radius: 6px 6px 0 0; color: var(--muted); cursor: pointer;
+    font: inherit; }
+  nav button[aria-selected="true"] { background: var(--panel); border-color: var(--line);
+    color: var(--fg); font-weight: 600; }
+  main { padding: 18px 20px 40px; border-top: 1px solid var(--line); margin-top: -1px; }
+  section[hidden] { display: none; }
+  form { display: grid; gap: 12px; max-width: 780px; }
+  .row { display: grid; grid-template-columns: 310px 1fr; gap: 12px; align-items: center; }
+  /* Variable names such as USE_ARTIFACTS_FROM_BUILDKITE_BUILD are long and
+     must stay readable rather than being clipped. */
+  label { color: var(--muted); overflow-wrap: anywhere; }
+  @media (max-width: 720px) { .row { grid-template-columns: 1fr; gap: 4px; } }
+  input, select { font: inherit; padding: 7px 9px; border: 1px solid var(--line);
+    border-radius: 6px; background: var(--bg); color: var(--fg); width: 100%; }
+  .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button.go { background: var(--accent); color: #fff; border: none; padding: 8px 16px;
+    border-radius: 6px; cursor: pointer; font: inherit; font-weight: 600; }
+  button.go:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost { background: none; border: 1px solid var(--line); color: var(--fg);
+    padding: 8px 14px; border-radius: 6px; cursor: pointer; font: inherit; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px; overflow-x: auto; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line);
+    font-size: 13px; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px;
+    border: 1px solid var(--line); font-size: 12px; }
+  .checks li { margin-bottom: 4px; }
+  ul { padding-left: 18px; margin: 8px 0; }
+  .note { background: var(--panel); border-left: 3px solid var(--warn); padding: 10px 12px;
+    border-radius: 0 6px 6px 0; margin: 12px 0; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>mina-ops</h1>
+  <span class="muted" id="project">local console — reads everything, writes only when you confirm</span>
+</header>
+
+<nav>
+  <button id="tab-inventory" aria-selected="true" onclick="showTab('inventory')">Inventory</button>
+  <button id="tab-nightly" aria-selected="false" onclick="showTab('nightly')">Nightly</button>
+  <button id="tab-hardfork" aria-selected="false" onclick="showTab('hardfork')">Hardfork</button>
+</nav>
+
+<main>
+  <section id="inventory">
+    <form onsubmit="loadInventory(event)">
+      <div class="row"><label for="commit">Commit or version</label>
+        <input id="commit" placeholder="8c0c2e6 — a short hash needs a checkout path"></div>
+      <div class="row"><label for="repo_path">Local checkout (optional)</label>
+        <input id="repo_path" placeholder="~/work/minaprotocol/mina"></div>
+      <div class="row"><label for="channel">Channel</label>
+        <select id="channel"></select></div>
+      <div class="row"><label for="codenames">Codenames</label>
+        <input id="codenames" placeholder="leave blank for the project default"></div>
+      <div class="actions">
+        <button class="go" type="submit">Look up</button>
+        <span class="muted" id="inventory-status"></span>
+      </div>
+    </form>
+    <div id="inventory-out"></div>
+  </section>
+
+  <section id="nightly" hidden>
+    <form onsubmit="loadNightly(event)">
+      <div class="row"><label for="nightly-branch">Branch</label>
+        <input id="nightly-branch" placeholder="project default"></div>
+      <div class="row"><label for="nightly-last">Builds to compare</label>
+        <input id="nightly-last" type="number" min="1" max="20" value="3"></div>
+      <div class="actions">
+        <button class="go" type="submit">Compare</button>
+        <span class="muted" id="nightly-status"></span>
+      </div>
+    </form>
+    <div id="nightly-out"></div>
+  </section>
+
+  <section id="hardfork" hidden>
+    <p class="muted">Every field below becomes an environment variable on the build.
+      Checks run before anything is created, and again on the server when you confirm.</p>
+    <form onsubmit="validateHardfork(event)">
+      <div class="row"><label for="hf-branch">Branch</label>
+        <input id="hf-branch" placeholder="devnet-dryrun" required></div>
+      <div class="row"><label for="hf-codenames">CODENAMES_CONFIG</label>
+        <input id="hf-codenames" placeholder="Jammy_Amd64" required></div>
+      <div class="row"><label for="hf-network">NETWORK</label>
+        <select id="hf-network"></select></div>
+      <div class="row"><label for="hf-timestamp">GENESIS_TIMESTAMP</label>
+        <input id="hf-timestamp" placeholder="2026-08-08T21:00:00.00Z" required></div>
+      <div class="row"><label for="hf-config">CONFIG_JSON_GZ_URL</label>
+        <input id="hf-config" placeholder="https://storage.googleapis.com/…json.gz" required></div>
+      <div class="row"><label for="hf-blocks">PRECOMPUTED_FORK_BLOCK_PREFIX</label>
+        <input id="hf-blocks" placeholder="gs://mesa-hf-precomputed-blocks/…"></div>
+      <div class="row"><label for="hf-artifacts">USE_ARTIFACTS_FROM_BUILDKITE_BUILD</label>
+        <input id="hf-artifacts" placeholder="019fe333-ee52-45fa-8404-ba189bc1b57b"></div>
+      <div class="row"><label for="hf-dockers">USE_GENERIC_DOCKERS_FROM_VERSION</label>
+        <input id="hf-dockers" placeholder="4.0.0-rc1-devnet-dryrun-ee5cb7f"></div>
+      <div class="row"><label for="hf-repo">REPO</label>
+        <select id="hf-repo"></select></div>
+      <div class="row"><label for="hf-ledger">MINA_LEDGER_S3_BUCKET</label>
+        <input id="hf-ledger" value="https://s3-us-west-2.amazonaws.com/snark-keys.o1test.net"></div>
+      <div class="actions">
+        <button class="go" type="submit">Check</button>
+        <button class="ghost" type="button" onclick="copyEnv()">Copy as env block</button>
+        <span class="muted" id="hf-status"></span>
+      </div>
+    </form>
+    <div id="hf-out"></div>
+  </section>
+</main>
+
+<script>
+const TOKEN = "__TOKEN__";
+let LAST_ENV = null;
+let LAST_PARAMS = null;
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: { "x-mina-ops-token": TOKEN, "content-type": "application/json", ...(options.headers || {}) },
+  });
+  const body = await response.json().catch(() => ({ error: response.statusText }));
+  if (!response.ok && !body.checks) throw new Error(body.error || response.statusText);
+  return body;
+}
+
+const TABS = ["inventory", "nightly", "hardfork"];
+
+function showTab(name) {
+  for (const tab of TABS) {
+    document.getElementById(tab).hidden = tab !== name;
+    document.getElementById("tab-" + tab).setAttribute("aria-selected", String(tab === name));
+  }
+  // Keep the token out of history: replace rather than push, and change only
+  // the fragment.
+  history.replaceState(null, "", "#" + name);
+}
+
+function tabFromHash() {
+  const wanted = location.hash.replace("#", "");
+  return TABS.includes(wanted) ? wanted : "inventory";
+}
+window.addEventListener("hashchange", () => showTab(tabFromHash()));
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function presenceClass(status) {
+  return status === "present" ? "ok" : status === "missing" ? "bad" : "warn";
+}
+
+function warningsBlock(warnings) {
+  if (!warnings || !warnings.length) return "";
+  return `<div class="note"><strong>Limits and warnings</strong><ul>` +
+    warnings.map(w => `<li>${escapeHtml(w)}</li>`).join("") + `</ul></div>`;
+}
+
+async function loadSchema() {
+  const schema = await api("/api/schema");
+  document.getElementById("project").textContent =
+    `${schema.project} · ${schema.repo} — reads everything, writes only when you confirm`;
+  fill("channel", schema.channels, "unstable");
+  fill("hf-network", schema.networks, "Devnet");
+  fill("hf-repo", schema.repos, "Nightly");
+  if (schema.nightly_branch) document.getElementById("nightly-branch").placeholder = schema.nightly_branch;
+}
+
+function fill(id, values, selected) {
+  const element = document.getElementById(id);
+  element.innerHTML = values.map(v =>
+    `<option ${v === selected ? "selected" : ""}>${escapeHtml(v)}</option>`).join("");
+}
+
+async function loadInventory(event) {
+  event.preventDefault();
+  const status = document.getElementById("inventory-status");
+  const out = document.getElementById("inventory-out");
+  const value = document.getElementById("commit").value.trim();
+  if (!value) return;
+
+  const parameters = new URLSearchParams();
+  // A version always contains a dot; a commit hash never does.
+  parameters.set(value.includes(".") ? "version" : "commit", value);
+  const path = document.getElementById("repo_path").value.trim();
+  if (path) parameters.set("repo_path", path);
+  parameters.set("channel", document.getElementById("channel").value);
+  const codenames = document.getElementById("codenames").value.trim();
+  if (codenames) parameters.set("codenames", codenames);
+
+  status.textContent = "looking…"; out.innerHTML = "";
+  try {
+    const data = await api("/api/artifacts?" + parameters.toString());
+    status.textContent = "";
+    out.innerHTML = renderInventory(data);
+  } catch (e) {
+    status.textContent = ""; out.innerHTML = `<p class="bad">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderInventory(data) {
+  let html = `<h3>${escapeHtml(data.version || "version unresolved")}
+    <span class="muted">${escapeHtml(data.version_source || "")}</span></h3>`;
+
+  if (data.pull_requests?.length) {
+    html += `<p>` + data.pull_requests.map(pr =>
+      `<a href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">#${pr.number}</a>
+       ${escapeHtml(pr.title)} <span class="pill">${escapeHtml(pr.state)}</span>`).join("<br>") + `</p>`;
+  }
+
+  if (data.builds?.length) {
+    html += `<table><tr><th>Pipeline</th><th>Build</th><th>State</th><th>Branch</th></tr>` +
+      data.builds.map(b => `<tr><td>${escapeHtml(b.pipeline)}</td>
+        <td><a href="${escapeHtml(b.web_url)}" target="_blank" rel="noreferrer">#${b.number}</a></td>
+        <td>${escapeHtml(b.state)}</td><td>${escapeHtml(b.branch)}</td></tr>`).join("") + `</table>`;
+  }
+
+  if (data.cached_builds?.length) {
+    html += `<h4>CI cache</h4><table><tr><th>Build</th><th>Packages</th><th>Where</th></tr>` +
+      data.cached_builds.map(c => `<tr>
+        <td>${escapeHtml(c.build_id)}</td>
+        <td class="${presenceClass(c.presence.status)}">${c.presence.status === "present"
+          ? c.debians.length + " packages" : escapeHtml(c.presence.status)}
+          ${c.presence.reason ? `<br><span class="muted">${escapeHtml(c.presence.reason)}</span>` : ""}</td>
+        <td class="muted">${escapeHtml(c.source)}</td></tr>`).join("") + `</table>`;
+  }
+
+  if (data.debians?.length) {
+    html += `<h4>Debian packages</h4><table><tr><th>Package</th><th>Arch</th><th>Codename</th><th>Repository</th><th></th></tr>` +
+      data.debians.map(d => `<tr><td>${escapeHtml(d.package)}</td><td>${escapeHtml(d.arch)}</td>
+        <td>${escapeHtml(d.codename)}</td><td class="muted">${escapeHtml(d.bucket)}</td>
+        <td class="${presenceClass(d.presence.status)}">${escapeHtml(d.presence.status)}</td></tr>`).join("") + `</table>`;
+  }
+
+  if (data.dockers?.length) {
+    html += `<h4>Docker images</h4><table><tr><th>Image</th><th></th></tr>` +
+      data.dockers.map(d => `<tr><td>${escapeHtml(d.repo + "/" + d.image + ":" + d.tag)}</td>
+        <td class="${presenceClass(d.presence.status)}">${escapeHtml(d.presence.status)}</td></tr>`).join("") + `</table>`;
+  }
+
+  return html + warningsBlock(data.warnings);
+}
+
+async function loadNightly(event) {
+  event.preventDefault();
+  const status = document.getElementById("nightly-status");
+  const out = document.getElementById("nightly-out");
+  const parameters = new URLSearchParams();
+  const branch = document.getElementById("nightly-branch").value.trim();
+  if (branch) parameters.set("branch", branch);
+  parameters.set("last", document.getElementById("nightly-last").value || "3");
+
+  status.textContent = "comparing…"; out.innerHTML = "";
+  try {
+    const data = await api("/api/nightly?" + parameters.toString());
+    status.textContent = "";
+    out.innerHTML = renderNightly(data);
+  } catch (e) {
+    status.textContent = ""; out.innerHTML = `<p class="bad">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderNightly(data) {
+  let html = `<h3>${escapeHtml(data.pipeline)} <span class="muted">${escapeHtml(data.branch || "every branch")}</span></h3>`;
+
+  html += `<table><tr><th>Build</th><th>State</th><th>Failing</th><th>Owner</th></tr>` +
+    (data.builds || []).map(b => `<tr>
+      <td><a href="${escapeHtml(b.web_url)}" target="_blank" rel="noreferrer">#${b.number}</a></td>
+      <td class="${b.state === "passed" ? "ok" : "bad"}">${escapeHtml(b.state)}</td>
+      <td>${b.failures.length} of ${b.job_count}</td>
+      <td>${(b.pull_requests || []).map(pr =>
+        `<a href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">#${pr.number}</a>
+         ${escapeHtml(pr.author || "")}`).join("<br>")}</td></tr>`).join("") + `</table>`;
+
+  const failures = data.latest_failures || [];
+  const group = (trend) => failures.filter(f => f.trend === trend);
+  const list = (items, className) => items.length
+    ? `<ul>` + items.map(f => `<li class="${className}">${escapeHtml(f.name)}` +
+        (f.consecutive ? ` <span class="muted">(${f.consecutive} builds)</span>` : "") +
+        (f.soft_failed ? ` <span class="muted">soft failure</span>` : "") + `</li>`).join("") + `</ul>`
+    : `<p class="muted">none</p>`;
+
+  html += `<h4>New</h4>${list(group("new"), "bad")}`;
+  html += `<h4>Already failing</h4>${list(group("persistent"), "warn")}`;
+  const unknown = group("unknown");
+  if (unknown.length) html += `<h4>No earlier build to compare against</h4>${list(unknown, "warn")}`;
+  if (data.fixed_since_previous?.length) {
+    html += `<h4>Fixed since the previous build</h4><ul>` +
+      data.fixed_since_previous.map(f => `<li class="ok">${escapeHtml(f.name)}</li>`).join("") + `</ul>`;
+  }
+  return html + warningsBlock(data.warnings);
+}
+
+function hardforkParams() {
+  return {
+    branch: document.getElementById("hf-branch").value.trim(),
+    codenames_config: document.getElementById("hf-codenames").value.trim(),
+    network: document.getElementById("hf-network").value,
+    genesis_timestamp: document.getElementById("hf-timestamp").value.trim(),
+    config_json_gz_url: document.getElementById("hf-config").value.trim(),
+    precomputed_fork_block_prefix: document.getElementById("hf-blocks").value.trim(),
+    use_artifacts_from_buildkite_build: document.getElementById("hf-artifacts").value.trim(),
+    use_generic_dockers_from_version: document.getElementById("hf-dockers").value.trim(),
+    repo: document.getElementById("hf-repo").value,
+    mina_ledger_s3_bucket: document.getElementById("hf-ledger").value.trim(),
+  };
+}
+
+async function validateHardfork(event) {
+  event.preventDefault();
+  const status = document.getElementById("hf-status");
+  const out = document.getElementById("hf-out");
+  LAST_PARAMS = hardforkParams();
+
+  status.textContent = "checking…"; out.innerHTML = "";
+  try {
+    const result = await api("/api/hardfork/validate",
+      { method: "POST", body: JSON.stringify(LAST_PARAMS) });
+    status.textContent = "";
+    LAST_ENV = result.env;
+    out.innerHTML = renderValidation(result);
+  } catch (e) {
+    status.textContent = ""; out.innerHTML = `<p class="bad">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderValidation(result) {
+  const failed = result.checks.filter(c => c.outcome === "failed");
+  const html = `<h4>Checks</h4><ul class="checks">` + result.checks.map(c => {
+    const className = c.outcome === "passed" ? "ok" : c.outcome === "failed" ? "bad" : "warn";
+    return `<li class="${className}"><strong>${escapeHtml(c.field)}</strong> — ${escapeHtml(c.detail)}</li>`;
+  }).join("") + `</ul>` +
+  `<h4>Environment that would be sent</h4><pre>${escapeHtml(
+     Object.entries(result.env).map(([k, v]) => `${k}: "${v}"`).join("\n"))}</pre>` +
+  `<p class="muted">Pipeline: ${escapeHtml(result.pipeline)}</p>`;
+
+  if (failed.length) {
+    return html + `<p class="bad">${failed.length} check(s) failed. Fix them before creating a build.</p>`;
+  }
+  return html + `<div class="actions">
+      <button class="go" onclick="triggerHardfork()">Create the build</button>
+      <span class="muted">This creates a real Buildkite build.</span>
+    </div><div id="hf-result"></div>`;
+}
+
+async function triggerHardfork() {
+  const out = document.getElementById("hf-result");
+  out.innerHTML = `<p class="muted">creating…</p>`;
+  try {
+    const result = await api("/api/hardfork/trigger",
+      { method: "POST", body: JSON.stringify({ ...LAST_PARAMS, confirm: true }) });
+    if (result.checks) {
+      out.innerHTML = `<p class="bad">The server re-checked and refused.</p>` + renderValidation(result);
+      return;
+    }
+    out.innerHTML = `<p class="ok">Build #${result.number} created.
+      <a href="${escapeHtml(result.web_url)}" target="_blank" rel="noreferrer">Open it in Buildkite</a></p>`;
+    window.open(result.web_url, "_blank", "noreferrer");
+  } catch (e) {
+    out.innerHTML = `<p class="bad">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function copyEnv() {
+  const params = LAST_ENV || null;
+  if (!params) {
+    document.getElementById("hf-status").textContent = "check the parameters first";
+    return;
+  }
+  const text = "env:\n" + Object.entries(params)
+    .map(([k, v]) => `  ${k}: "${v}"`).join("\n");
+  navigator.clipboard.writeText(text).then(
+    () => { document.getElementById("hf-status").textContent = "copied"; },
+    () => { document.getElementById("hf-status").textContent = "could not copy"; });
+}
+
+showTab(tabFromHash());
+loadSchema().catch(e => {
+  document.getElementById("project").textContent = "could not load the schema: " + e.message;
+});
+</script>
+</body>
+</html>

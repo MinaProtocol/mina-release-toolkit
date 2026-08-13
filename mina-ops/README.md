@@ -130,6 +130,43 @@ would make a long-standing failure look new.
 Without `--branch`, release branches are mixed into the comparison and
 failures appear to come and go. The project default is `develop`.
 
+## The console
+
+```bash
+mina-ops serve            # prints http://127.0.0.1:7777/?t=<token>
+```
+
+One page over the same API: look up a commit, compare nightlies, and fill in
+the hardfork package-generation parameters as a form rather than pasting a
+block of environment variables into Buildkite.
+
+The hardfork tab checks every field before anything is created — codenames and
+network against the values the pipeline's Dhall accepts, the timestamp for
+UTC, the config URL for existence, and the referenced build UUID for packages
+still in the CI cache. It then shows the exact environment block that would be
+sent. "Copy as env block" gives you that text if you would rather start the
+build from the Buildkite UI.
+
+Creating a build requires an explicit confirmation, and the server re-runs
+every check on the confirmed request rather than trusting the browser's copy.
+Afterwards it hands you Buildkite's URL and sends you there: the console
+renders no build state.
+
+### Why a page on localhost needs guarding
+
+Any page open in the same browser can send requests to a localhost port.
+Three rules close that off:
+
+1. The listener binds `127.0.0.1`, never `0.0.0.0`.
+2. Every request must carry a token generated at startup and changed on every
+   start. The page reads it from the URL it was opened with and sends it in a
+   header, which a cross-origin page cannot set without a preflight this
+   server never grants.
+3. The `Host` header must be a loopback address, which is what stops DNS
+   rebinding.
+
+No CORS headers are sent, deliberately.
+
 ## As an MCP server
 
 `mina-ops mcp` serves the same queries over MCP on stdin and stdout, so an

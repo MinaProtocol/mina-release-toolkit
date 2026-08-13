@@ -44,6 +44,9 @@ pub struct BuildkiteConfig {
     /// mixes release branches into the comparison.
     #[serde(default)]
     pub nightly_branch: Option<String>,
+    /// Pipeline the hardfork package-generation form triggers.
+    #[serde(default)]
+    pub hardfork_pipeline: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
