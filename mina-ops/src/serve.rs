@@ -221,12 +221,18 @@ async fn artifacts(
         return json_error(StatusCode::BAD_REQUEST, "give a commit, a version, or both");
     }
 
+    // A short hash needs a checkout to expand. The form's field wins, then
+    // MINA_REPO, so the common case needs no field at all.
+    let repo_path = query
+        .repo_path
+        .clone()
+        .filter(|p| !p.trim().is_empty())
+        .or_else(|| std::env::var("MINA_REPO").ok());
+
     let commit = match &query.commit {
         Some(commit) => {
-            match inventory::resolve_commit(
-                commit,
-                query.repo_path.as_deref().map(std::path::Path::new),
-            ) {
+            match inventory::resolve_commit(commit, repo_path.as_deref().map(std::path::Path::new))
+            {
                 Ok(resolved) => Some(resolved),
                 Err(e) => return json_error(StatusCode::BAD_REQUEST, &e.to_string()),
             }

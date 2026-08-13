@@ -58,6 +58,20 @@
   ul { padding-left: 18px; margin: 8px 0; }
   .note { background: var(--panel); border-left: 3px solid var(--warn); padding: 10px 12px;
     border-radius: 0 6px 6px 0; margin: 12px 0; }
+  details.group { border: 1px solid var(--line); border-radius: 8px; margin: 10px 0;
+    background: var(--panel); }
+  details.group > summary { cursor: pointer; padding: 10px 14px; font-weight: 600;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; list-style: none; }
+  details.group > summary::-webkit-details-marker { display: none; }
+  details.group > summary::before { content: "\25B8"; color: var(--muted);
+    transition: transform .12s ease; display: inline-block; }
+  details.group[open] > summary::before { transform: rotate(90deg); }
+  details.group > .body { padding: 0 14px 12px; }
+  details.group table { margin-top: 0; }
+  .tally { font-weight: 400; display: flex; gap: 6px; flex-wrap: wrap; }
+  .tally .pill { border-color: transparent; background: var(--bg); }
+  .tally .pill.ok { color: var(--ok); } .tally .pill.bad { color: var(--bad); }
+  .tally .pill.warn { color: var(--warn); }
   a { color: var(--accent); }
 </style>
 </head>
@@ -77,9 +91,9 @@
   <section id="inventory">
     <form onsubmit="loadInventory(event)">
       <div class="row"><label for="commit">Commit or version</label>
-        <input id="commit" placeholder="8c0c2e6 — a short hash needs a checkout path"></div>
-      <div class="row"><label for="repo_path">Local checkout (optional)</label>
-        <input id="repo_path" placeholder="~/work/minaprotocol/mina"></div>
+        <input id="commit" placeholder="8c0c2e6, a full hash, or 3.3.0-8c0c2e6"></div>
+      <div class="row"><label for="repo_path">Local checkout</label>
+        <input id="repo_path" placeholder="only if MINA_REPO is not set"></div>
       <div class="row"><label for="channel">Channel</label>
         <select id="channel"></select></div>
       <div class="row"><label for="codenames">Codenames</label>
@@ -182,6 +196,27 @@ function presenceClass(status) {
   return status === "present" ? "ok" : status === "missing" ? "bad" : "warn";
 }
 
+function tally(statuses) {
+  const counted = { present: 0, missing: 0, unknown: 0 };
+  for (const status of statuses) counted[status] = (counted[status] || 0) + 1;
+  const pills = [];
+  if (counted.present) pills.push(`<span class="pill ok">${counted.present} present</span>`);
+  if (counted.missing) pills.push(`<span class="pill bad">${counted.missing} missing</span>`);
+  if (counted.unknown) pills.push(`<span class="pill warn">${counted.unknown} unknown</span>`);
+  return { html: `<span class="tally">${pills.join("")}</span>`,
+           allPresent: counted.missing === 0 && counted.unknown === 0 && counted.present > 0 };
+}
+
+/// A group starts open when it holds something to look at, and closed when
+/// everything in it is present — the count stays visible either way.
+function group(title, statuses, bodyHtml) {
+  const { html, allPresent } = tally(statuses);
+  return `<details class="group" ${allPresent ? "" : "open"}>
+      <summary>${escapeHtml(title)} ${html}</summary>
+      <div class="body">${bodyHtml}</div>
+    </details>`;
+}
+
 function warningsBlock(warnings) {
   if (!warnings || !warnings.length) return "";
   return `<div class="note"><strong>Limits and warnings</strong><ul>` +
@@ -212,8 +247,10 @@ async function loadInventory(event) {
   if (!value) return;
 
   const parameters = new URLSearchParams();
-  // A version always contains a dot; a commit hash never does.
-  parameters.set(value.includes(".") ? "version" : "commit", value);
+  // A commit is hexadecimal and 7 to 40 characters, short hashes included.
+  // Anything else is treated as a version.
+  const looksLikeCommit = /^[0-9a-f]{7,40}$/i.test(value);
+  parameters.set(looksLikeCommit ? "commit" : "version", value);
   const path = document.getElementById("repo_path").value.trim();
   if (path) parameters.set("repo_path", path);
   parameters.set("channel", document.getElementById("channel").value);
@@ -230,9 +267,17 @@ async function loadInventory(event) {
   }
 }
 
+const VERSION_SOURCES = {
+  given: "as given",
+  buildkite_artifacts: "from Buildkite artifacts",
+  ci_cache: "from the CI cache",
+  debian_repository: "recovered from the Debian repository",
+};
+
 function renderInventory(data) {
+  const source = VERSION_SOURCES[data.version_source] || data.version_source || "";
   let html = `<h3>${escapeHtml(data.version || "version unresolved")}
-    <span class="muted">${escapeHtml(data.version_source || "")}</span></h3>`;
+    <span class="muted">${escapeHtml(source)}</span></h3>`;
 
   if (data.pull_requests?.length) {
     html += `<p>` + data.pull_requests.map(pr =>
@@ -248,26 +293,29 @@ function renderInventory(data) {
   }
 
   if (data.cached_builds?.length) {
-    html += `<h4>CI cache</h4><table><tr><th>Build</th><th>Packages</th><th>Where</th></tr>` +
+    const body = `<table><tr><th>Build</th><th>Packages</th><th>Where</th></tr>` +
       data.cached_builds.map(c => `<tr>
         <td>${escapeHtml(c.build_id)}</td>
         <td class="${presenceClass(c.presence.status)}">${c.presence.status === "present"
           ? c.debians.length + " packages" : escapeHtml(c.presence.status)}
           ${c.presence.reason ? `<br><span class="muted">${escapeHtml(c.presence.reason)}</span>` : ""}</td>
         <td class="muted">${escapeHtml(c.source)}</td></tr>`).join("") + `</table>`;
+    html += group("CI cache", data.cached_builds.map(c => c.presence.status), body);
   }
 
   if (data.debians?.length) {
-    html += `<h4>Debian packages</h4><table><tr><th>Package</th><th>Arch</th><th>Codename</th><th>Repository</th><th></th></tr>` +
+    const body = `<table><tr><th>Package</th><th>Arch</th><th>Codename</th><th>Repository</th><th></th></tr>` +
       data.debians.map(d => `<tr><td>${escapeHtml(d.package)}</td><td>${escapeHtml(d.arch)}</td>
         <td>${escapeHtml(d.codename)}</td><td class="muted">${escapeHtml(d.bucket)}</td>
         <td class="${presenceClass(d.presence.status)}">${escapeHtml(d.presence.status)}</td></tr>`).join("") + `</table>`;
+    html += group("Debian packages", data.debians.map(d => d.presence.status), body);
   }
 
   if (data.dockers?.length) {
-    html += `<h4>Docker images</h4><table><tr><th>Image</th><th></th></tr>` +
+    const body = `<table><tr><th>Image</th><th></th></tr>` +
       data.dockers.map(d => `<tr><td>${escapeHtml(d.repo + "/" + d.image + ":" + d.tag)}</td>
         <td class="${presenceClass(d.presence.status)}">${escapeHtml(d.presence.status)}</td></tr>`).join("") + `</table>`;
+    html += group("Docker images", data.dockers.map(d => d.presence.status), body);
   }
 
   return html + warningsBlock(data.warnings);
@@ -406,8 +454,23 @@ function copyEnv() {
     () => { document.getElementById("hf-status").textContent = "could not copy"; });
 }
 
+/// A lookup can be linked to: ?commit=8c0c2e6&channel=stable runs on load.
+function prefillFromUrl() {
+  const parameters = new URLSearchParams(location.search);
+  const subject = parameters.get("commit") || parameters.get("version");
+  if (!subject) return;
+  document.getElementById("commit").value = subject;
+  for (const [name, id] of [["channel", "channel"], ["codenames", "codenames"],
+                            ["repo_path", "repo_path"]]) {
+    const value = parameters.get(name);
+    if (value) document.getElementById(id).value = value;
+  }
+  showTab("inventory");
+  loadInventory(new Event("submit"));
+}
+
 showTab(tabFromHash());
-loadSchema().catch(e => {
+loadSchema().then(prefillFromUrl).catch(e => {
   document.getElementById("project").textContent = "could not load the schema: " + e.message;
 });
 </script>
