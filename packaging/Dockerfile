@@ -69,11 +69,29 @@ RUN apt-get update && \
         xz-utils zstd \
         # release-manager: pushes to APT and S3
         awscli \
+        # release-manager: deb-s3 (built below) is a Ruby gem
+        ruby ruby-dev \
         # buildkite-cache-manager: SSH transport to Hetzner
         openssh-client rsync \
+        # release-manager: dig, for the CDN invalidation path
+        dnsutils \
         # generally useful for entrypoint and debugging
         bash curl && \
     rm -rf /var/lib/apt/lists/*
+
+# deb-s3 from the pinned fork, not rubygems: the flags release-manager passes
+# (--lock, --fail-if-exists, --cache-control, --skip-package-upload) are ours
+# and are not all in upstream 0.11.
+COPY deb-s3 /tmp/deb-s3
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends build-essential && \
+    cd /tmp/deb-s3 && \
+    gem build deb-s3.gemspec && \
+    gem install --no-document ./deb-s3-*.gem && \
+    apt-get purge -y build-essential && \
+    apt-get autoremove -y && \
+    rm -rf /tmp/deb-s3 /var/lib/apt/lists/* && \
+    deb-s3 --help > /dev/null
 
 # Copy the four release binaries into /usr/bin so they're on PATH.
 COPY --from=builder /src/release-manager/target/release/release-manager           /usr/bin/release-manager
