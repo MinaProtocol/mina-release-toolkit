@@ -7,6 +7,7 @@
 //! process.
 
 pub mod artifacts;
+pub mod cdn;
 pub mod cli;
 pub mod commands;
 pub mod debian_publish;

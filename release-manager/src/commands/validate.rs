@@ -2,6 +2,7 @@ use colored::*;
 use sha2::{Digest, Sha256};
 
 use crate::artifacts::parse_string_list;
+use crate::cdn::{bucket_name, invalidate_cloudfront};
 use crate::cli::ValidateArgs;
 use crate::errors::{ManagerError, ManagerResult};
 use crate::process::{CommandExecutor, RealExecutor, S3Config};
@@ -278,17 +279,6 @@ fn repo_base(debian_repo: &str) -> String {
 /// name is the bucket (`packages.o1test.net` → bucket `packages.o1test.net`).
 /// In tests the value is a full URL like `http://127.0.0.1:9000/test-bucket`,
 /// in which case the bucket is the path segment after the host.
-fn bucket_name(debian_repo: &str) -> String {
-    if let Some(after_scheme) = debian_repo.split_once("://") {
-        let rest = after_scheme.1.trim_end_matches('/');
-        if let Some((_, path)) = rest.split_once('/') {
-            return path.split('/').next().unwrap_or("").to_string();
-        }
-        return rest.to_string();
-    }
-    debian_repo.to_string()
-}
-
 fn parse_packages_file(body: &str) -> Vec<PackagesEntry> {
     let mut entries = Vec::new();
     let mut current = PackagesEntry::default();
@@ -318,79 +308,11 @@ fn parse_packages_file(body: &str) -> Vec<PackagesEntry> {
     entries
 }
 
-fn invalidate_cloudfront(
-    exec: &dyn CommandExecutor,
-    debian_repo: &str,
-    codename: &str,
-) -> ManagerResult<()> {
-    let dig_out = exec.run("dig", &["+short", "CNAME", debian_repo]);
-    let cf_domain = match dig_out {
-        Ok(out) => out.stdout.trim().trim_end_matches('.').to_string(),
-        Err(_) => String::new(),
-    };
-    if cf_domain.is_empty() {
-        println!(
-            "    ⚠️  No CNAME found for {} — skipping CDN invalidation",
-            debian_repo
-        );
-        return Ok(());
-    }
-
-    let query = format!("DistributionList.Items[?DomainName=='{}'].Id", cf_domain);
-    let list_out = exec.run(
-        "aws",
-        &[
-            "cloudfront",
-            "list-distributions",
-            "--query",
-            &query,
-            "--output",
-            "text",
-        ],
-    );
-    let dist_id = match list_out {
-        Ok(out) => out.stdout.trim().to_string(),
-        Err(_) => String::new(),
-    };
-    if dist_id.is_empty() || dist_id == "None" {
-        println!("    ⚠️  Could not find CloudFront distribution");
-        return Ok(());
-    }
-
-    let paths = format!("/dists/{}/*", codename);
-    let out = exec
-        .run(
-            "aws",
-            &[
-                "cloudfront",
-                "create-invalidation",
-                "--distribution-id",
-                &dist_id,
-                "--paths",
-                &paths,
-            ],
-        )
-        .map_err(|e| {
-            ManagerError::ValidationError(format!("aws cloudfront create-invalidation: {}", e))
-        })?;
-
-    for line in out.stdout.lines() {
-        println!("    {}", line);
-    }
-    for line in out.stderr.lines() {
-        eprintln!("    {}", line);
-    }
-    if out.is_success() {
-        println!("    ✅ Cache invalidation submitted");
-    } else {
-        println!("    ⚠️  Cache invalidation command failed");
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(unused_imports)]
+    use crate::process::{command_available, run_with_env};
 
     #[test]
     fn parse_packages_basic() {
@@ -782,36 +704,6 @@ SHA256: deadbeef
             "validate against MinIO failed: {:?}",
             result.err()
         );
-    }
-
-    fn command_available(cmd: &str) -> bool {
-        std::process::Command::new("sh")
-            .arg("-c")
-            .arg(format!("command -v {} >/dev/null 2>&1", cmd))
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    }
-
-    fn run_with_env(program: &str, args: &[&str], env: &[(&str, &str)]) {
-        let mut cmd = std::process::Command::new(program);
-        cmd.args(args);
-        for (k, v) in env {
-            cmd.env(k, v);
-        }
-        let out = cmd
-            .output()
-            .unwrap_or_else(|e| panic!("spawn {} failed: {}", program, e));
-        if !out.status.success() {
-            eprintln!(
-                "[{} {:?}] exited {}: {} / {}",
-                program,
-                args,
-                out.status,
-                String::from_utf8_lossy(&out.stdout),
-                String::from_utf8_lossy(&out.stderr)
-            );
-        }
     }
 
     #[tokio::test]

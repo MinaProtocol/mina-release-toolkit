@@ -3,6 +3,7 @@ pub mod persist;
 pub mod progress;
 pub mod promote;
 pub mod publish;
+pub mod publish_from_cache;
 pub mod pull;
 pub mod reversion;
 pub mod validate;

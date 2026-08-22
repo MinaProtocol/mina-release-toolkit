@@ -287,3 +287,43 @@ mod tests {
         assert!(out.stdout.contains("INV123"));
     }
 }
+
+/// Shared test helpers for the integration tests that shell out for real.
+///
+/// They live here, next to [`CommandExecutor`], rather than inside one
+/// command's test module, because more than one command's integration test
+/// needs them and a copy in each would drift.
+#[cfg(test)]
+pub fn command_available(cmd: &str) -> bool {
+    std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!("command -v {} >/dev/null 2>&1", cmd))
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Run `program` with extra environment variables, reporting a non-zero exit
+/// on stderr rather than panicking: callers use it for provisioning steps
+/// where a second, idempotent attempt is normal.
+#[cfg(test)]
+pub fn run_with_env(program: &str, args: &[&str], env: &[(&str, &str)]) {
+    let mut cmd = std::process::Command::new(program);
+    cmd.args(args);
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    let out = cmd
+        .output()
+        .unwrap_or_else(|e| panic!("spawn {} failed: {}", program, e));
+    if !out.status.success() {
+        eprintln!(
+            "[{} {:?}] exited {}: {} / {}",
+            program,
+            args,
+            out.status,
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}

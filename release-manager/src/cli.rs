@@ -7,7 +7,7 @@ pub const DEFAULT_DEBIAN_REPO: &str = "packages.o1test.net";
 pub const DEFAULT_ARCHITECTURES: &str = "amd64";
 
 #[derive(Args)]
-pub struct PublishArgs {
+pub struct PublishFromCacheArgs {
     /// Comma separated list of artifacts to publish
     #[arg(long, default_value = DEFAULT_ARTIFACTS)]
     pub artifacts: String,
@@ -363,4 +363,84 @@ pub struct PullArgs {
     /// Enable debug mode to show external command execution
     #[arg(long)]
     pub debug: bool,
+}
+
+/// Arguments for `release-manager publish`.
+///
+/// Upload takes `.deb` files exactly as they were built and puts them in an
+/// APT repository. There is deliberately no `--source-version` /
+/// `--target-version` pair and no `--buildkite-build-id`:
+///
+/// * The version is already inside the package and in its file name. A
+///   command that also took a version could only agree with the package or
+///   contradict it, and the second case is a re-version — which is what
+///   `reversion` is for, as a separate and visible step.
+/// * The files are already on disk. Getting them out of the CI cache is
+///   `pull`'s job (or the caller's cache reader), so `upload` stays a pure
+///   "these files, that repository" operation and can be tested without a
+///   Buildkite build to point at.
+///
+/// The architecture is not an argument either: `deb-s3` reads it from each
+/// package, so a folder holding both amd64 and arm64 packages uploads
+/// correctly in one call.
+#[derive(Args)]
+pub struct PublishArgs {
+    /// Folder with a `{codename}/*.deb` layout — the output of `pull`, of
+    /// `reversion`, or of a CI cache read
+    #[arg(long)]
+    pub source_folder: String,
+
+    /// Debian repository bucket to upload into
+    #[arg(long, default_value = DEFAULT_DEBIAN_REPO)]
+    pub debian_repo: String,
+
+    /// Target channel. Becomes the deb-s3 component and suite
+    #[arg(long)]
+    pub channel: String,
+
+    /// Comma separated codenames to upload. Default: every subfolder found
+    #[arg(long)]
+    pub codenames: Option<String>,
+
+    /// GPG key id to sign the repository with. Omit to leave it unsigned
+    #[arg(long)]
+    pub debian_sign_key: Option<String>,
+
+    /// Overwrite a package that is already in the repository at this version
+    #[arg(long)]
+    pub force: bool,
+
+    /// After publishing, ask the repository whether each package is really
+    /// listed, and fail if any is not
+    #[arg(long)]
+    pub verify: bool,
+
+    /// How many times --verify asks before giving up. The index sits behind a
+    /// CDN and is rewritten as a whole object, so a read straight after a
+    /// write can still serve the previous manifest
+    #[arg(long, default_value_t = 10)]
+    pub verify_attempts: u32,
+
+    /// Seconds to wait between --verify attempts
+    #[arg(long, default_value_t = 30)]
+    pub verify_interval_secs: u64,
+
+    /// Do not invalidate the CloudFront cache after uploading
+    #[arg(long)]
+    pub skip_cache_invalidation: bool,
+
+    /// Print what would be uploaded and stop
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Point deb-s3 at an S3-compatible endpoint instead of AWS. For a
+    /// mirror or a local MinIO; leave unset for the real buckets.
+    /// Credentials still come from the environment
+    #[arg(long)]
+    pub s3_endpoint: Option<String>,
+
+    /// Address buckets as a path rather than a subdomain. Needed by most
+    /// S3-compatible servers, not by AWS
+    #[arg(long)]
+    pub s3_force_path_style: bool,
 }
