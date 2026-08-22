@@ -399,6 +399,17 @@ pub fn verdict_from_exist_output(stdout: &str, package: &PackageRef) -> Option<b
     None
 }
 
+/// Render a captured stream for an error message, so an empty one reads as
+/// empty rather than as nothing at all.
+fn blank_if_empty(stream: &str) -> String {
+    let trimmed = stream.trim();
+    if trimmed.is_empty() {
+        "(empty)".to_string()
+    } else {
+        trimmed.replace('\n', "\n          ")
+    }
+}
+
 /// Ask the repository whether each package just published is really listed,
 /// and retry while any is still absent.
 ///
@@ -440,11 +451,21 @@ async fn verify_present(
                     // Not "absent" — "unreadable". Retrying cannot fix a
                     // shape we do not understand, and carrying on would
                     // report a publish that was never checked.
+                    //
+                    // Both streams and the exit status go into the message.
+                    // The usual cause is a `deb-s3` without the subcommand at
+                    // all — the rubygems release has no `exist` — and then
+                    // stdout is empty and everything worth reading is the
+                    // Thor error on stderr.
                     return Err(ManagerError::CommandFailed(format!(
                         "cannot tell whether {} was published: no Found/Missing verdict for it \
-                         in `deb-s3 exist` output:\n{}",
+                         in `deb-s3 exist` output (exit {}).\n  stdout: {}\n  stderr: {}\n\
+                         Check that `deb-s3` has an `exist` subcommand: the rubygems release \
+                         does not, only the pinned fork and the Debian ruby-deb-s3 package do.",
                         package,
-                        out.stdout.trim()
+                        out.status,
+                        blank_if_empty(&out.stdout),
+                        blank_if_empty(&out.stderr)
                     )));
                 }
             }
@@ -905,6 +926,33 @@ mod tests {
             2,
             "an unreadable verdict must not be retried"
         );
+    }
+
+    #[tokio::test]
+    async fn a_deb_s3_without_exist_says_so_instead_of_showing_an_empty_output() {
+        // The rubygems release of deb-s3 has no `exist` subcommand, so Thor
+        // fails on stderr and stdout is empty. Reporting only stdout left the
+        // reader with "output:" and nothing after it.
+        let root = make_tree(&[("bullseye", &["mina-devnet_4.0.0-abc1234_amd64.deb"])]);
+        let exec = MockCommandExecutor::new();
+        exec.expect_args_starting_with("deb-s3", &["upload"], CommandOutput::success(""));
+        exec.expect_args_starting_with(
+            "deb-s3",
+            &["exist"],
+            CommandOutput::failure(1, "Could not find command \"exist\"."),
+        );
+        let mut args = args_for(root.path());
+        args.verify = true;
+
+        let err = execute_with(args, &exec, &S3Config::default())
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("exit 1"), "{}", err);
+        assert!(err.contains("stdout: (empty)"), "{}", err);
+        assert!(err.contains("Could not find command"), "{}", err);
+        assert!(err.contains("rubygems release"), "{}", err);
     }
 
     #[tokio::test]

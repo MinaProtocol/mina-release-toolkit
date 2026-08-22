@@ -27,8 +27,12 @@ jobs:
         rust: [stable]
 
     steps:
+    # submodules: the integration tests run against the deb-s3 in deb-s3/,
+    # which is the build we ship. See "Install integration test deps" below.
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
@@ -68,13 +72,22 @@ jobs:
         cd release-manager
         cargo test --verbose
 
-    # Integration tests need Docker (for MinIO), deb-s3, dpkg-deb, and aws
-    # on PATH. GitHub-hosted Ubuntu runners already provide Docker, dpkg-deb,
-    # and aws; we just need to install deb-s3 (a Ruby gem). Skipped on macOS.
+    # Integration tests need Docker (for MinIO), deb-s3, dpkg-deb and aws on
+    # PATH. GitHub-hosted Ubuntu runners already provide all but deb-s3.
+    #
+    # deb-s3 is built from the submodule, NOT `gem install deb-s3`. The
+    # rubygems release is a different project state: it does not have the
+    # `exist` subcommand the publish verification uses, so the tests were
+    # exercising a deb-s3 that this repository never ships. Building the
+    # pinned fork is also what packaging/Dockerfile does, so CI and the
+    # published image agree.
     - name: Install integration test deps (Ubuntu)
       if: runner.os == 'Linux'
       run: |
-        sudo gem install deb-s3
+        cd deb-s3
+        gem build deb-s3.gemspec
+        sudo gem install --no-document ./deb-s3-*.gem
+        deb-s3 help | grep -q ' exist ' || { echo "deb-s3 has no exist subcommand"; exit 1; }
 
     - name: Run integration tests (Ubuntu)
       if: runner.os == 'Linux'
