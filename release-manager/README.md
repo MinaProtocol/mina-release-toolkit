@@ -8,7 +8,8 @@ This tool handles the complete lifecycle of build artifacts including publishing
 
 ### Main Capabilities
 
-- **PUBLISH**: Publish build artifacts from cache to Debian repositories and Docker registries
+- **PUBLISH**: Put already-built `.deb` files into a Debian repository, unchanged, then check each one is really there
+- **PUBLISH-FROM-CACHE**: Legacy. Pull from the CI cache by Buildkite build id, re-versioning on the way
 - **PROMOTE**: Promote artifacts from one channel/registry to another (e.g., unstable -> stable)
 - **VERIFY**: Verify that artifacts are correctly published in target channels/registries
 - **FIX**: Repair Debian repository manifests when needed
@@ -66,10 +67,94 @@ release-manager <COMMAND> [OPTIONS]
 
 #### Publish
 
-Publish build artifacts from cache to repositories and registries.
+Put `.deb` files that are already at their final version into a Debian
+repository, exactly as they are, and then confirm they arrived.
 
 ```bash
 release-manager publish \
+  --source-folder _debs \
+  --debian-repo stable.apt.packages.minaprotocol.com \
+  --channel stable \
+  --debian-sign-key 386E9DAC378726A48ED5CE56ADB30D9ACE02F414 \
+  --verify
+```
+
+`--source-folder` holds a `{codename}/*.deb` tree — the layout `pull` and
+`reversion` write, and the layout the Buildkite cache stores. Every codename
+subfolder found is published, unless `--codenames` names a subset.
+
+**Publish rewrites nothing.** There is no `--source-version` /
+`--target-version` pair and no `--buildkite-build-id`:
+
+| Not an argument | Because |
+| --- | --- |
+| version | It is already in the package and in the file name. A version argument could only agree with the package or contradict it, and contradicting it is a re-version — which is `reversion`, a separate and visible step. |
+| architecture | `deb-s3` reads `Architecture` from each package, so a folder holding both amd64 and arm64 publishes correctly in one call. |
+| build id | Fetching from the CI cache is `pull`'s job. Keeping the two apart means `publish` can be tested without a Buildkite build to point at. |
+
+Use it when the build already produced the final version and the final suite,
+which is the direct shape: build, test, publish. Use `publish-from-cache` when
+the artifact has to change on its way to the repository, and `promote` when it
+is already published and moving between channels.
+
+One `deb-s3 upload` call is made per codename rather than per package:
+`deb-s3` takes the repository lock for a whole invocation, so uploading package
+by package would take and release the lock, and rewrite the manifest, once per
+package.
+
+##### Verification
+
+`--verify` asks the repository, package by package, whether it is now listed at
+the version and architecture it was built with, and fails the command if any is
+not. It is `deb-s3 exist`, not `deb-s3 verify`: the latter checks that the
+manifest is internally consistent, which it can be while saying nothing about
+the packages you just pushed.
+
+Three details are worth knowing, because each one is a way this check could
+have passed without checking anything:
+
+- **The exit status is unusable.** The pinned `deb-s3` fork exits 0 whether a
+  package is there or not and states the answer on stdout, so the output is
+  parsed.
+- **Two `deb-s3` builds are in use and word it differently.** The fork prints
+  `name : Found`; the Debian `ruby-deb-s3` gem prints `>> name version arch:
+  Found`. They also disagree about the subcommand — `exist` taking one
+  space-joined argument versus `exists` taking separate ones — so exactly one
+  package is asked about per call, the only shape both accept.
+- **"No verdict" is not "found".** A package the output never mentions fails the
+  command with `cannot tell whether …`, and is not retried. Treating an
+  unreadable answer as success is how a publish reports a package it never
+  checked.
+
+`--verify-attempts` (default 10) and `--verify-interval-secs` (default 30)
+control the retry. The retry is not padding: the bucket sits behind a CDN and
+the index is rewritten as a whole object, so a read straight after a write can
+legitimately still serve the previous manifest. Only packages that have not
+turned up yet are re-asked about.
+
+##### Other flags
+
+- `--force` drops `--fail-if-exists`, so an existing package at that version is
+  overwritten. Off by default.
+- `--skip-cache-invalidation` leaves the CloudFront cache alone. By default the
+  `dists/{codename}/*` prefix is invalidated, so readers are not served a stale
+  `Packages` index.
+- `--dry-run` lists what would be published and stops.
+- `--s3-endpoint` and `--s3-force-path-style` point `deb-s3` at an
+  S3-compatible server (a mirror, or a local MinIO) instead of AWS. Credentials
+  are deliberately not options — `deb-s3` reads them from the environment,
+  which is where CI keeps them and keeps them out of the process list.
+
+An empty codename folder, or a source folder with no codename folders in it, is
+an error rather than a silent success: a pipeline that publishes nothing must
+not report that it published.
+
+#### Publish from cache (legacy)
+
+Publish build artifacts from cache to repositories and registries.
+
+```bash
+release-manager publish-from-cache \
   --buildkite-build-id 12345 \
   --source-version 1.0.0 \
   --target-version 1.0.1 \

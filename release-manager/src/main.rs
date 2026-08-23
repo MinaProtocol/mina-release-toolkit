@@ -17,7 +17,10 @@ It handles the complete lifecycle of build artifacts including publishing, promo
 and maintenance of packages across different channels and platforms.
 
 Main capabilities:
-- PUBLISH: Publish build artifacts from cache to Debian repositories and Docker registries
+- PUBLISH: Put already-built .deb files into a Debian repository, unchanged, and
+  verify afterwards that each one is really there
+- PUBLISH-FROM-CACHE: Legacy. Pull from the CI cache by buildkite build id and
+  re-version on the way
 - PROMOTE: Promote artifacts from one channel/registry to another (e.g., unstable -> stable)
 - VERIFY: Verify that artifacts are correctly published in target channels/registries
 - FIX: Repair Debian repository manifests when needed
@@ -39,8 +42,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Publish build artifacts from cache to debian repository and docker registry
+    /// Publish already-built .deb files to a debian repository, unchanged
     Publish(PublishArgs),
+    /// Legacy: publish from the CI cache by buildkite build id, re-versioning
+    /// on the way. Kept as the fallback for flows that still need a rewrite
+    PublishFromCache(PublishFromCacheArgs),
     /// Promote artifacts from one channel/registry to another
     Promote(PromoteArgs),
     /// Verify artifacts in target channel/registry
@@ -72,6 +78,7 @@ async fn main() -> ManagerResult<()> {
 
     let result = match cli.command {
         Commands::Publish(args) => commands::publish::execute(args).await,
+        Commands::PublishFromCache(args) => commands::publish_from_cache::execute(args).await,
         Commands::Promote(args) => commands::promote::execute(args).await,
         Commands::Verify(args) => commands::verify::execute(args).await,
         Commands::Fix(args) => commands::fix::execute(args).await,
@@ -98,7 +105,10 @@ async fn check_prerequisites(command: &Commands) -> ManagerResult<()> {
     use utils::check_app;
 
     match command {
-        Commands::Publish(args) => {
+        Commands::Publish(_) => {
+            check_app("deb-s3").await?;
+        }
+        Commands::PublishFromCache(args) => {
             if args.backend == "gs" {
                 check_app("gsutil").await?;
             }
