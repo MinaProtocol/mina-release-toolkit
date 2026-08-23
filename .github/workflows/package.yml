@@ -14,6 +14,7 @@ on:
       # a rebuild when the pointer moves — which is how a deb-toolkit fix
       # (it lives in its own repo) reaches the published image.
       - 'deb-toolkit'
+      - 'deb-s3'
       - '.github/workflows/package.yml'
     tags:
       - 'v*'
@@ -25,6 +26,7 @@ on:
       - 'buildkite-cache-manager/**'
       - 'packaging/**'
       - 'deb-toolkit'
+      - 'deb-s3'
       - '.github/workflows/package.yml'
 
 env:
