@@ -159,48 +159,62 @@ pub async fn execute_with(
     for (batch, to_upload) in &plans {
         println!(" 📦 {}", batch.codename);
 
-        if to_upload.is_empty() {
-            // Not a no-op: --verify and the CDN invalidation below still run,
-            // so a re-run over an already-published folder still proves the
-            // end state instead of assuming it. Calling `deb-s3 upload` with
-            // no files would fail ("You must specify at least one file to
-            // upload") and would have nothing to add to the manifest anyway:
-            // for every package in *this folder*, the pool object was just
-            // confirmed to hold the bytes the index describes.
-            println!("    ⏩ Every package is already published, unchanged — nothing to upload");
-        } else {
-            // One deb-s3 call per codename rather than one per package: deb-s3
-            // takes the repository lock for the whole invocation, so uploading
-            // package by package would take and release it N times and rewrite
-            // the manifest N times.
-            let argv = upload_argv(
-                &bucket,
-                &batch.codename,
-                &args.channel,
-                to_upload,
-                args.debian_sign_key.as_deref(),
-                args.force,
-                s3,
+        // deb-s3 is called once per codename either way, and it is the only
+        // thing that writes `Release` and `InRelease`. A run where every
+        // package is already published still has to make that call, with
+        // `--skip-package-upload` so no bytes move: `Release` covers a whole
+        // codename while the repository lock covers one component of it, so a
+        // publish to a neighbouring channel can leave this channel's `Release`
+        // holding stale hashes for a `Packages` index that is itself correct.
+        // Re-running the publish is what repairs that, and it can only repair
+        // it if it still asks deb-s3 to rewrite the indices.
+        //
+        // One call per codename rather than one per package, in both shapes:
+        // deb-s3 takes the lock for a whole invocation, so package-by-package
+        // would take and release it N times and rewrite the manifest N times.
+        let nothing_to_transfer = to_upload.is_empty();
+        if nothing_to_transfer {
+            println!(
+                "    ⏩ Every package is already published, unchanged — \
+                 re-asserting the indices without transferring anything"
             );
-            let argv_refs: Vec<&str> = argv.iter().map(String::as_str).collect();
-            let out = exec
-                .run("deb-s3", &argv_refs)
-                .map_err(|e| ManagerError::CommandFailed(format!("deb-s3 upload: {}", e)))?;
+        }
+        let argv = upload_argv(
+            &bucket,
+            &batch.codename,
+            &args.channel,
+            if nothing_to_transfer {
+                &batch.debs
+            } else {
+                to_upload
+            },
+            args.debian_sign_key.as_deref(),
+            args.force,
+            s3,
+            nothing_to_transfer,
+        );
+        let argv_refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+        let out = exec
+            .run("deb-s3", &argv_refs)
+            .map_err(|e| ManagerError::CommandFailed(format!("deb-s3 upload: {}", e)))?;
 
-            for line in out.stdout.lines() {
-                println!("    {}", line);
-            }
-            for line in out.stderr.lines() {
-                eprintln!("    {}", line);
-            }
-            if !out.is_success() {
-                return Err(ManagerError::CommandFailed(format!(
-                    "deb-s3 upload failed for {} (exit {}): {}",
-                    batch.codename,
-                    out.status,
-                    out.stderr.trim()
-                )));
-            }
+        for line in out.stdout.lines() {
+            println!("    {}", line);
+        }
+        for line in out.stderr.lines() {
+            eprintln!("    {}", line);
+        }
+        if !out.is_success() {
+            return Err(ManagerError::CommandFailed(format!(
+                "deb-s3 upload failed for {} (exit {}): {}",
+                batch.codename,
+                out.status,
+                out.stderr.trim()
+            )));
+        }
+        if nothing_to_transfer {
+            println!("    ✅ Indices re-asserted");
+        } else {
             uploaded += to_upload.len();
             println!("    ✅ Uploaded");
         }
@@ -318,6 +332,12 @@ pub fn collect_batches(
 /// package land at `dists/{codename}/{channel}/`. No `--arch` is passed:
 /// deb-s3 falls back to each package's own `Architecture` field, so one call
 /// handles a mixed-architecture folder correctly.
+///
+/// `indices_only` adds `--skip-package-upload`, which makes deb-s3 rewrite the
+/// manifests, `Release` and `InRelease` while transferring no package bytes at
+/// all (`manifest.rb:103` skips the pool writes). The packages still have to
+/// be named, because that is what deb-s3 builds the manifest entries from.
+#[allow(clippy::too_many_arguments)]
 pub fn upload_argv(
     bucket: &str,
     codename: &str,
@@ -326,6 +346,7 @@ pub fn upload_argv(
     sign_key: Option<&str>,
     force: bool,
     s3: &S3Config,
+    indices_only: bool,
 ) -> Vec<String> {
     let mut argv: Vec<String> = vec![
         "upload".to_string(),
@@ -341,6 +362,9 @@ pub fn upload_argv(
         "--lock".to_string(),
         "--cache-control=no-store,no-cache,must-revalidate".to_string(),
     ];
+    if indices_only {
+        argv.push("--skip-package-upload".to_string());
+    }
     if !force {
         // A backstop, not the guard. deb-s3's --fail-if-exists only raises
         // when a package with the same name and version is already in the
@@ -618,6 +642,12 @@ pub fn head_object_argv(bucket: &str, key: &str, s3: &S3Config) -> Vec<String> {
         key.to_string(),
         "--region".to_string(),
         S3_REGION.to_string(),
+        // Pinned, not left to the profile: an `output = text` in ~/.aws/config
+        // or an exported AWS_DEFAULT_OUTPUT would make every answer
+        // unparseable, and since an unreadable answer means "upload again",
+        // the skip would quietly stop happening on those agents alone.
+        "--output".to_string(),
+        "json".to_string(),
     ];
     if let Some(endpoint) = &s3.endpoint {
         argv.push("--endpoint-url".to_string());
@@ -650,7 +680,7 @@ enum RepoState {
     /// is really in the pool. Skip it.
     Identical,
     /// The manifest lists our exact bytes, but the pool object it names could
-    /// not be confirmed. Upload it again — see [`pool_object_present`].
+    /// not be confirmed. Upload it again — see [`pool_object_matches`].
     Incomplete { reason: String },
     /// Published at the same version as *different* bytes. Refuse.
     Differs {
@@ -733,7 +763,7 @@ fn pool_object_matches(
     if let (Some(want), Some(got)) = (expected_size, actual_size) {
         if want != got {
             return Err(format!(
-                "{} holds {} bytes but the index says {}",
+                "{} holds {} bytes, the local package is {}",
                 key, got, want
             ));
         }
@@ -744,8 +774,14 @@ fn pool_object_matches(
     // a `-partcount` suffix and cannot be compared with anything here.
     let actual_md5 = head
         .get("Metadata")
-        .and_then(|m| m.get("md5"))
-        .and_then(|v| v.as_str())
+        .and_then(|m| m.as_object())
+        // S3 lower-cases metadata keys, so `md5` is what comes back; the
+        // case-insensitive scan is one line and removes the assumption.
+        .and_then(|m| {
+            m.iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case("md5"))
+                .and_then(|(_, v)| v.as_str())
+        })
         .map(|s| s.to_ascii_lowercase())
         .or_else(|| {
             head.get("ETag")
@@ -760,8 +796,16 @@ fn pool_object_matches(
             "{} holds different bytes than the index describes (MD5 {})",
             key, got
         )),
-        _ => Err(format!(
-            "{} could not be matched against the index (no comparable MD5)",
+        // The two "cannot tell" cases are worth telling apart: one is about
+        // the object, the other about the index entry describing it, and
+        // blaming the pool for a manifest with no `MD5sum:` sends whoever
+        // reads the line looking in the wrong place.
+        (Some(_), None) => Err(format!(
+            "{} has no MD5 to compare (no deb-s3 metadata, no plain ETag)",
+            key
+        )),
+        (None, _) => Err(format!(
+            "the index entry for {} has no usable MD5sum to compare against",
             key
         )),
     }
@@ -840,12 +884,15 @@ fn classify_one(
             })
         }
     };
+    // The length compared is the local file's, not the stanza's `Size:`: it
+    // is free, and it asks "is this our package" rather than trusting the
+    // index to be internally consistent about its own entry.
     match pool_object_matches(
         exec,
         s3,
         bucket,
         &key,
-        size_from_show_output(&out.stdout),
+        std::fs::metadata(deb).ok().map(|m| m.len()),
         md5_from_show_output(&out.stdout).as_deref(),
     ) {
         Ok(()) => Ok(RepoState::Identical),
@@ -858,9 +905,11 @@ fn classify_one(
 /// version that is already published.
 ///
 /// Nothing is skipped on the strength of the manifest alone — see
-/// [`pool_object_present`]. A skip means the index lists our exact bytes
-/// *and* the `.deb` is really in the pool, which in deb-s3's write order also
-/// means the `Release` file that covers it was written.
+/// [`pool_object_matches`]. A skip means the index lists our exact bytes
+/// *and* the pool holds them. It says nothing about `dists/{codename}/Release`,
+/// which covers every component of the codename and can be left stale by a
+/// publish to a neighbouring one; that is why a run where everything is
+/// skipped still asks deb-s3 to rewrite the indices.
 ///
 /// The read happens outside deb-s3's repository lock. That is deliberate and
 /// sufficient: the check guards a re-run of the same build, not two different
@@ -900,6 +949,11 @@ fn preflight(
             // architecture that has appeared since it was first published
             // without it. They are the small config packages, so re-uploading
             // one costs nothing worth saving.
+            //
+            // The architecture here is the file name's, not the control
+            // file's. They agree for everything this repository builds; a
+            // package that disagreed would be skippable when it should not
+            // be, which is why the two are worth keeping in step.
             RepoState::Identical if package.arch == "all" => {
                 println!(
                     "    ↻ {} already published, identical — uploading anyway so every \
@@ -1042,7 +1096,7 @@ async fn verify_present(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::process::{CommandOutput, MockCommandExecutor};
+    use crate::process::{CommandOutput, MockCommandExecutor, RecordedCall};
 
     fn args_for(dir: &Path) -> PublishArgs {
         PublishArgs {
@@ -1070,7 +1124,7 @@ mod tests {
             let dir = root.path().join(codename);
             std::fs::create_dir_all(&dir).unwrap();
             for deb in *debs {
-                std::fs::write(dir.join(deb), b"not-a-real-deb").unwrap();
+                std::fs::write(dir.join(deb), FIXTURE_BYTES).unwrap();
             }
         }
         root
@@ -1092,9 +1146,12 @@ mod tests {
         CommandOutput::failure(1, "!! No such package found.")
     }
 
-    /// The `MD5sum:` and `Size:` that [`published_with`] reports.
+    /// The `MD5sum:` [`published_with`] reports, and the size of what
+    /// [`make_tree`] actually writes — the pool object is compared against the
+    /// local file, so the fixture has to be honest about its own length.
     const STANZA_MD5: &str = "24e90aff2c9522aed91b892e83a1024f";
-    const STANZA_SIZE: u64 = 736;
+    const FIXTURE_BYTES: &[u8] = b"not-a-real-deb";
+    const STANZA_SIZE: u64 = FIXTURE_BYTES.len() as u64;
 
     /// `aws s3api head-object` for a pool object that is there and holds the
     /// bytes the index describes — including the `md5` metadata deb-s3 writes
@@ -1103,13 +1160,31 @@ mod tests {
         pool_holding(STANZA_SIZE, STANZA_MD5)
     }
 
-    /// `aws s3api head-object` for a pool object of a given size and digest.
+    /// `aws s3api head-object` for a pool object of a given size and digest,
+    /// carrying both the deb-s3 metadata and a matching ETag.
     fn pool_holding(size: u64, md5: &str) -> CommandOutput {
         CommandOutput::success(format!(
             "{{\n    \"ContentLength\": {},\n    \"ETag\": \"\\\"{}\\\"\",\n    \
              \"Metadata\": {{\n        \"md5\": \"{}\"\n    }}\n}}\n",
             size, md5, md5
         ))
+    }
+
+    /// A head-object answer with only one of the two digest sources, so each
+    /// can be shown to carry the decision on its own.
+    fn pool_holding_only(
+        size: u64,
+        metadata_md5: Option<&str>,
+        etag: Option<&str>,
+    ) -> CommandOutput {
+        let mut fields = vec![format!("\"ContentLength\": {}", size)];
+        if let Some(etag) = etag {
+            fields.push(format!("\"ETag\": \"\\\"{}\\\"\"", etag));
+        }
+        if let Some(md5) = metadata_md5 {
+            fields.push(format!("\"Metadata\": {{\"md5\": \"{}\"}}", md5));
+        }
+        CommandOutput::success(format!("{{{}}}\n", fields.join(", ")))
     }
 
     /// `aws s3api head-object` for a pool object that is not — the shape the
@@ -1146,7 +1221,23 @@ mod tests {
     /// claim to hold the same bytes the test wrote to disk.
     fn fixture_sha256() -> String {
         use sha2::{Digest, Sha256};
-        format!("{:x}", Sha256::digest(b"not-a-real-deb"))
+        format!("{:x}", Sha256::digest(FIXTURE_BYTES))
+    }
+
+    /// Uploads that actually transfer package bytes. A codename where every
+    /// package was skipped still calls `deb-s3 upload`, with
+    /// `--skip-package-upload`, to rewrite the indices and `Release`.
+    fn transferring_uploads(exec: &MockCommandExecutor) -> usize {
+        exec.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| {
+                c.program == "deb-s3"
+                    && c.args.first().map(String::as_str) == Some("upload")
+                    && !c.args.iter().any(|a| a == "--skip-package-upload")
+            })
+            .count()
     }
 
     /// How many `deb-s3` calls were made for a given subcommand.
@@ -1249,6 +1340,7 @@ mod tests {
             None,
             false,
             &S3Config::default(),
+            false,
         );
 
         let component = argv.iter().position(|a| a == "--component").unwrap();
@@ -1267,6 +1359,7 @@ mod tests {
             None,
             false,
             &S3Config::default(),
+            false,
         );
 
         assert!(!argv.iter().any(|a| a == "--arch"), "argv: {:?}", argv);
@@ -1282,6 +1375,7 @@ mod tests {
             None,
             false,
             &S3Config::default(),
+            false,
         );
         assert!(base.iter().any(|a| a == "--fail-if-exists"));
 
@@ -1293,6 +1387,7 @@ mod tests {
             None,
             true,
             &S3Config::default(),
+            false,
         );
         assert!(!forced.iter().any(|a| a == "--fail-if-exists"));
     }
@@ -1307,6 +1402,7 @@ mod tests {
             Some("KEYID"),
             false,
             &S3Config::default(),
+            false,
         );
 
         let sign = argv.iter().position(|a| a == "--sign").unwrap();
@@ -1325,6 +1421,7 @@ mod tests {
             None,
             false,
             &S3Config::default(),
+            false,
         );
 
         assert!(argv.iter().any(|a| a == "a.deb"));
@@ -1343,7 +1440,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(subcommand_calls(&exec, "upload"), 2);
+        assert_eq!(transferring_uploads(&exec), 2);
         // One pre-flight read per package, not per codename.
         assert_eq!(subcommand_calls(&exec, "show"), 3);
     }
@@ -1382,7 +1479,7 @@ mod tests {
 
         assert!(err.to_string().contains("deb-s3 upload failed"));
         assert_eq!(
-            subcommand_calls(&exec, "upload"),
+            transferring_uploads(&exec),
             1,
             "must not upload the next codename after a failure"
         );
@@ -1611,7 +1708,7 @@ mod tests {
         );
         // a-pkg asked once + b-pkg asked on all 3 attempts.
         assert_eq!(subcommand_calls(&exec, "exist"), 4);
-        assert_eq!(subcommand_calls(&exec, "upload"), 1);
+        assert_eq!(transferring_uploads(&exec), 1);
     }
 
     #[tokio::test]
@@ -1735,6 +1832,10 @@ mod tests {
         let key = plain.iter().position(|a| a == "--key").unwrap();
         assert_eq!(plain[key + 1], "pool/x/y.deb");
         assert!(!plain.iter().any(|a| a == "--endpoint-url"));
+        // The answer is parsed as JSON, so the format cannot be left to
+        // whatever the agent's ~/.aws/config says.
+        let output = plain.iter().position(|a| a == "--output").unwrap();
+        assert_eq!(plain[output + 1], "json");
 
         let s3 = S3Config {
             endpoint: Some("http://127.0.0.1:9000".to_string()),
@@ -1781,7 +1882,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            subcommand_calls(&exec, "upload"),
+            transferring_uploads(&exec),
             0,
             "a package already published with the same bytes must not be re-uploaded"
         );
@@ -1805,7 +1906,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            subcommand_calls(&exec, "upload"),
+            transferring_uploads(&exec),
             1,
             "the manifest alone must not be enough to skip an upload"
         );
@@ -1830,7 +1931,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(subcommand_calls(&exec.mock, "upload"), 1);
+        assert_eq!(transferring_uploads(&exec.mock), 1);
     }
 
     /// An executor for which `aws` cannot be spawned at all — `exec.run`
@@ -1871,7 +1972,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(subcommand_calls(&exec, "upload"), 1);
+        assert_eq!(transferring_uploads(&exec), 1);
     }
 
     #[tokio::test]
@@ -1890,30 +1991,70 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(subcommand_calls(&exec, "upload"), 1);
+        assert_eq!(transferring_uploads(&exec), 1);
     }
 
-    #[tokio::test]
-    async fn a_head_object_answer_with_no_comparable_digest_is_uploaded_over() {
-        // A multipart ETag (`<hash>-<parts>`) and no deb-s3 md5 metadata: the
-        // object cannot be matched against the index, so it is not a skip.
+    /// Run one package through the pre-flight with a given head-object answer
+    /// and report whether it was skipped.
+    async fn skipped_given(head: CommandOutput) -> bool {
         let root = make_tree(&[("bullseye", &["mina-devnet_4.0.0-abc1234_amd64.deb"])]);
         let exec = MockCommandExecutor::new();
         exec.expect_args_starting_with("deb-s3", &["show"], published_with(&fixture_sha256()));
-        exec.expect_args_starting_with(
-            "aws",
-            &["s3api", "head-object"],
-            CommandOutput::success(
-                "{\n    \"ContentLength\": 736,\n    \"ETag\": \"\\\"abc123-7\\\"\"\n}\n",
-            ),
-        );
+        exec.expect_args_starting_with("aws", &["s3api", "head-object"], head);
         exec.expect_args_starting_with("deb-s3", &["upload"], CommandOutput::success(""));
 
         execute_with(args_for(root.path()), &exec, &S3Config::default())
             .await
             .unwrap();
 
-        assert_eq!(subcommand_calls(&exec, "upload"), 1);
+        // Every codename calls deb-s3 exactly once; a skip is the call that
+        // carries --skip-package-upload.
+        let calls = exec.calls.lock().unwrap();
+        let upload = calls
+            .iter()
+            .find(|c| c.args.first().map(String::as_str) == Some("upload"))
+            .expect("deb-s3 upload is called either way");
+        upload.args.iter().any(|a| a == "--skip-package-upload")
+    }
+
+    #[tokio::test]
+    async fn the_deb_s3_metadata_md5_is_enough_to_confirm_a_pool_object() {
+        // No ETag at all: the decision rests on deb-s3's own md5 metadata.
+        assert!(skipped_given(pool_holding_only(STANZA_SIZE, Some(STANZA_MD5), None)).await);
+        assert!(
+            !skipped_given(pool_holding_only(
+                STANZA_SIZE,
+                Some("ffffffffffffffffffffffffffffffff"),
+                None
+            ))
+            .await
+        );
+    }
+
+    #[tokio::test]
+    async fn a_plain_etag_is_enough_when_there_is_no_metadata() {
+        // An object put by something other than deb-s3 still has an ETag, and
+        // for a single-part upload that is the MD5.
+        assert!(skipped_given(pool_holding_only(STANZA_SIZE, None, Some(STANZA_MD5))).await);
+    }
+
+    #[tokio::test]
+    async fn a_multipart_etag_with_no_metadata_is_uploaded_over() {
+        // `<hash>-<parts>` is a digest of digests and cannot be compared with
+        // anything here, so the object is not confirmed and is uploaded again.
+        assert!(!skipped_given(pool_holding_only(STANZA_SIZE, None, Some("abc123-7"))).await);
+    }
+
+    #[tokio::test]
+    async fn a_head_object_answer_that_is_not_json_is_uploaded_over() {
+        // An `output = text` in the agent's aws config would do this. The
+        // answer cannot be read, so it cannot license a skip.
+        assert!(
+            !skipped_given(CommandOutput::success(
+                "HEADOBJECT\t736\tapplication/octet-stream\n"
+            ))
+            .await
+        );
     }
 
     #[tokio::test]
@@ -1938,7 +2079,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(subcommand_calls(&exec, "upload"), 1);
+        assert_eq!(transferring_uploads(&exec), 1);
         assert_eq!(
             exec.call_count("aws"),
             0,
@@ -1962,7 +2103,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(subcommand_calls(&exec, "upload"), 1);
+        assert_eq!(transferring_uploads(&exec), 1);
     }
 
     #[tokio::test]
@@ -1993,7 +2134,7 @@ mod tests {
 
         assert!(err.contains("different contents"), "{}", err);
         assert_eq!(
-            subcommand_calls(&exec, "upload"),
+            transferring_uploads(&exec),
             0,
             "bullseye must not be published when noble is going to be refused"
         );
@@ -2025,7 +2166,7 @@ mod tests {
         );
         assert!(err.contains("--force"), "{}", err);
         assert_eq!(
-            subcommand_calls(&exec, "upload"),
+            transferring_uploads(&exec),
             0,
             "nothing may be uploaded once a mismatch is found"
         );
@@ -2090,6 +2231,7 @@ mod tests {
         let exec = MockCommandExecutor::new();
         exec.expect_args_starting_with("deb-s3", &["show"], published_with(&fixture_sha256()));
         exec.expect_args_starting_with("aws", &["s3api", "head-object"], pool_present());
+        exec.expect_args_starting_with("deb-s3", &["upload"], CommandOutput::success(""));
         exec.expect_args_starting_with(
             "deb-s3",
             &["exist"],
@@ -2102,8 +2244,86 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(subcommand_calls(&exec, "upload"), 0);
+        assert_eq!(transferring_uploads(&exec), 0);
         assert_eq!(subcommand_calls(&exec, "exist"), 1);
+    }
+
+    #[tokio::test]
+    async fn a_codename_where_everything_is_skipped_still_rewrites_the_indices() {
+        // `Release` covers a whole codename while the repository lock covers
+        // one component of it, so a publish to a neighbouring channel can
+        // leave this one's `Release` stale over a `Packages` that is correct.
+        // Re-running the publish is what repairs that, and it can only repair
+        // it by asking deb-s3 to write — with no package bytes transferred.
+        let root = make_tree(&[("bullseye", &["mina-devnet_4.0.0-abc1234_amd64.deb"])]);
+        let exec = MockCommandExecutor::new();
+        exec.expect_args_starting_with("deb-s3", &["show"], published_with(&fixture_sha256()));
+        exec.expect_args_starting_with("aws", &["s3api", "head-object"], pool_present());
+        exec.expect_args_starting_with("deb-s3", &["upload"], CommandOutput::success(""));
+
+        execute_with(args_for(root.path()), &exec, &S3Config::default())
+            .await
+            .unwrap();
+
+        let calls = exec.calls.lock().unwrap();
+        let upload = calls
+            .iter()
+            .find(|c| c.args.first().map(String::as_str) == Some("upload"))
+            .expect("deb-s3 must still be asked to rewrite the indices");
+        assert!(
+            upload.args.iter().any(|a| a == "--skip-package-upload"),
+            "no bytes may be transferred for an all-skipped codename: {:?}",
+            upload.args
+        );
+        assert!(
+            upload
+                .args
+                .iter()
+                .any(|a| a.ends_with("mina-devnet_4.0.0-abc1234_amd64.deb")),
+            "deb-s3 builds the manifest entries from the named packages: {:?}",
+            upload.args
+        );
+    }
+
+    #[tokio::test]
+    async fn each_codename_is_uploaded_with_its_own_plan() {
+        // The plan is carried alongside the batch it was made for; this is
+        // what would catch the two ever being paired up wrongly.
+        let root = make_tree(&[
+            ("bullseye", &["bull-pkg_4.0.0-abc1234_amd64.deb"]),
+            ("noble", &["noble-pkg_4.0.0-abc1234_amd64.deb"]),
+        ]);
+        let exec = ok_exec();
+
+        execute_with(args_for(root.path()), &exec, &S3Config::default())
+            .await
+            .unwrap();
+
+        let calls = exec.calls.lock().unwrap();
+        let uploads: Vec<&RecordedCall> = calls
+            .iter()
+            .filter(|c| c.args.first().map(String::as_str) == Some("upload"))
+            .collect();
+        assert_eq!(uploads.len(), 2);
+        for upload in uploads {
+            let codename = upload
+                .args
+                .iter()
+                .position(|a| a == "--codename")
+                .map(|i| upload.args[i + 1].as_str())
+                .unwrap();
+            let expected = match codename {
+                "bullseye" => "bull-pkg",
+                "noble" => "noble-pkg",
+                other => panic!("unexpected codename {}", other),
+            };
+            assert!(
+                upload.args.iter().any(|a| a.contains(expected)),
+                "{} was uploaded with another codename's packages: {:?}",
+                codename,
+                upload.args
+            );
+        }
     }
 
     #[tokio::test]
@@ -2123,7 +2343,7 @@ mod tests {
             .to_string();
 
         assert!(err.contains("no readable SHA256"), "{}", err);
-        assert_eq!(subcommand_calls(&exec, "upload"), 0);
+        assert_eq!(transferring_uploads(&exec), 0);
     }
 
     #[tokio::test]
@@ -2151,7 +2371,7 @@ mod tests {
             err
         );
         assert!(err.contains("AccessDenied"), "{}", err);
-        assert_eq!(subcommand_calls(&exec, "upload"), 0);
+        assert_eq!(transferring_uploads(&exec), 0);
     }
 
     #[tokio::test]
@@ -2170,7 +2390,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(subcommand_calls(&exec, "show"), 0);
-        assert_eq!(subcommand_calls(&exec, "upload"), 1);
+        assert_eq!(transferring_uploads(&exec), 1);
     }
 
     #[tokio::test]
@@ -2184,7 +2404,7 @@ mod tests {
             .to_string();
 
         assert!(err.contains("Cannot read name/version/arch"), "{}", err);
-        assert_eq!(subcommand_calls(&exec, "upload"), 0);
+        assert_eq!(transferring_uploads(&exec), 0);
     }
 
     /// End-to-end against a real `deb-s3` and a real (MinIO) S3 bucket:
@@ -2408,16 +2628,66 @@ mod tests {
         );
         let modified_before = String::from_utf8_lossy(&head_before.stdout).into_owned();
 
+        // The claim the whole skip rests on: deb-s3 stamps the file's MD5
+        // into the object's metadata, and the temp-to-final copy keeps it.
+        // Asserted here rather than trusted, because if it were ever lost the
+        // skip would fall back to the ETag and nothing else would notice.
+        let stanza_md5 = md5_from_show_output(&String::from_utf8_lossy(&original.stdout))
+            .expect("no MD5sum in the show stanza");
+        let head_json: serde_json::Value =
+            serde_json::from_str(&modified_before).expect("head-object did not answer with JSON");
+        assert_eq!(
+            head_json
+                .get("Metadata")
+                .and_then(|m| m.get("md5"))
+                .and_then(|v| v.as_str()),
+            Some(stanza_md5.as_str()),
+            "the pool object lost the md5 metadata deb-s3 wrote: {}",
+            modified_before
+        );
+
+        // A sentinel for "was this object rewritten?". `put_object` does not
+        // carry tags over, so a re-upload loses it, whatever the clock says —
+        // deterministic where a LastModified comparison depends on a second
+        // having passed.
+        let tagged = aws(&[
+            "s3api",
+            "put-object-tagging",
+            "--bucket",
+            bucket,
+            "--key",
+            pool_key,
+            "--tagging",
+            "TagSet=[{Key=sentinel,Value=first-publish}]",
+        ]);
+        assert!(
+            tagged.status.success(),
+            "could not tag the pool object: {}",
+            String::from_utf8_lossy(&tagged.stderr)
+        );
+
         // 1. Re-publishing the identical folder converges: this is the retry
         //    after a partial upload, and it must not need a human.
         execute_with(args_for_run(), &exec, &s3)
             .await
             .expect("re-publishing the same packages must succeed");
 
-        // …and the skip is a real skip: an untouched pool object keeps its
-        // LastModified. Without this the whole check could be silently
-        // degraded — every package re-uploaded — and every other assertion
-        // here would still pass.
+        // …and the skip is a real skip. Without this the whole check could be
+        // silently degraded — every package re-uploaded — and every other
+        // assertion here would still pass.
+        let tags = aws(&[
+            "s3api",
+            "get-object-tagging",
+            "--bucket",
+            bucket,
+            "--key",
+            pool_key,
+        ]);
+        assert!(
+            String::from_utf8_lossy(&tags.stdout).contains("first-publish"),
+            "the pool object was rewritten — the package was not skipped: {}",
+            String::from_utf8_lossy(&tags.stdout)
+        );
         assert_eq!(
             String::from_utf8_lossy(&head(pool_key).stdout),
             modified_before,
@@ -2475,7 +2745,43 @@ mod tests {
             "the missing .deb was never re-uploaded — the manifest was trusted on its own"
         );
 
-        // 3. A different build at the same version is refused, and the
+        // 3. The same window, one step later: the pool object is *there* but
+        //    holds the previous build. That is what an interrupted overwrite
+        //    leaves behind, and apt reports it as a hash mismatch rather than
+        //    a 404, so an existence check alone would skip right past it.
+        let squatter = tmp.path().join("squatter");
+        std::fs::write(&squatter, b"an entirely different artifact\n").unwrap();
+        let replaced = aws(&[
+            "s3api",
+            "put-object",
+            "--bucket",
+            bucket,
+            "--key",
+            pool_key,
+            "--body",
+            squatter.to_str().unwrap(),
+        ]);
+        assert!(
+            replaced.status.success(),
+            "could not overwrite the pool object: {}",
+            String::from_utf8_lossy(&replaced.stderr)
+        );
+
+        execute_with(args_for_run(), &exec, &s3)
+            .await
+            .expect("a publish over a pool object holding other bytes must succeed");
+
+        let repaired = head(pool_key);
+        let repaired: serde_json::Value =
+            serde_json::from_str(&String::from_utf8_lossy(&repaired.stdout))
+                .expect("head-object did not answer with JSON");
+        assert_eq!(
+            repaired.get("ContentLength").and_then(|v| v.as_u64()),
+            size_from_show_output(&String::from_utf8_lossy(&original.stdout)),
+            "the pool object still holds the wrong bytes — existence was treated as identity"
+        );
+
+        // 4. A different build at the same version is refused, and the
         //    published package is left exactly as it was.
         build_deb("mina-devnet", "amd64", "TAMPERED — a different build\n");
 

@@ -142,11 +142,18 @@ skipped. deb-s3 merges those into every architecture manifest that exists at
 the time of the upload, so skipping one would leave an architecture that has
 appeared since it was first published without it.
 
-If every package in a codename is already published, the `deb-s3 upload` call is
-skipped for it, but `--verify` and the CDN invalidation still run, because a
-previous partial run may have left a stale index cached. Each codename is
-checked before *any* codename is uploaded, so a package that would be refused
-in the last codename fails the command before the first one is published.
+If every package in a codename is already published, `deb-s3 upload` still runs
+for it — with `--skip-package-upload`, so no package bytes move — and `--verify`
+and the CDN invalidation still run too. That is not ceremony. `dists/{codename}/Release`
+covers every component of a codename while the repository lock covers one
+component of it, so a publish to a neighbouring channel can leave this
+channel's `Release` holding stale hashes over a `Packages` index that is itself
+correct, and apt then refuses the whole dist. Re-running the publish is what
+repairs that, and it can only repair it by asking deb-s3 to write.
+
+Each codename is checked before *any* codename is uploaded, so a package that
+would be refused in the last codename fails the command before the first one is
+published.
 
 This check is what makes the guarantee hold. `deb-s3 --fail-if-exists` is still
 passed, but it does not do this job: it raises only when the same name and
@@ -168,14 +175,22 @@ publish — including the retry that would repair a missing pool object — wait
 about ten minutes on it and then fails.
 
 The digest of the local file is only computed once `show` says the package is
-present, so a first publish pays for one manifest read per package and nothing
-else. An output that cannot be read — a `show` that fails for any reason other
-than `No such package found.`, or a stanza with no usable `SHA256:` — fails the
+present, so a first publish pays for one `deb-s3 show` per package and nothing
+else. That is not free: `show` reads and parses the whole `Packages` index for
+the codename and architecture, and with `--preserve-versions` that index
+carries every version ever published, so on an old channel the pre-flight can
+be the slowest part of the command. It is still far cheaper than re-uploading
+the packages, which is the alternative.
+
+An output that cannot be read — a `show` that fails for any reason other than
+`No such package found.`, or a stanza with no usable `SHA256:` — fails the
 command rather than being assumed to mean "absent", for the same reason
-`--verify` refuses to read "no verdict" as "found". The pool check is the one
-place where an unanswered question is not fatal: uploading bytes that are
-already there is safe and idempotent, so a `head-object` that cannot run (no
-`aws` on PATH, no credentials) uploads instead of skipping.
+`--verify` refuses to read "no verdict" as "found". The exceptions are the two
+questions whose answer only decides whether to skip: a `head-object` that
+cannot run (no `aws` on PATH, no credentials, an unreadable answer) and a
+stanza with no `Filename:` to check. Both upload instead, because at that
+point the digests have already matched and uploading bytes that are already
+there is safe and idempotent.
 
 Two consequences worth stating plainly. The pre-flight needs a package's name,
 version and architecture, so a `.deb` whose file name is not
