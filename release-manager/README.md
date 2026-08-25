@@ -33,7 +33,10 @@ Make sure you have Rust installed. If not, install it from [rustup.rs](https://r
 Additional tools required depending on operations:
 - `gsutil` (for Google Cloud Storage operations)
 - `docker` (for Docker operations and verification)
-- `deb-s3` (for Debian repository fixes)
+- `deb-s3` (for Debian repository operations — the pinned fork, which unlike
+  the rubygems release has the `exist` and `show` subcommands `publish` uses)
+- `aws` (for CloudFront invalidation, and for `publish`'s pool-object check —
+  without it nothing breaks, but no package is ever skipped as unchanged)
 - SSH access and keys (for Hetzner operations)
 
 ### Building
@@ -110,24 +113,29 @@ holds at that name, version and architecture, using `deb-s3 show`:
 | Repository | What happens |
 | --- | --- |
 | absent | uploaded |
-| present, same SHA256, `.deb` really in the pool | skipped, and reported as already published |
-| present, same SHA256, pool object missing or unconfirmed | uploaded again, saying why |
+| present, same SHA256, pool object holds those bytes | skipped, and reported as already published (except `Architecture: all`, below) |
+| present, same SHA256, pool object missing, different, or unconfirmed | uploaded again, saying why |
 | present, different SHA256 | **the command fails**, naming both digests |
 
 So a re-run over the same folder — the retry after a partial upload — converges
 and exits 0 without needing a human, while a second, *different* build at the
 same version is refused instead of quietly replacing what users install.
 
-**A skip needs the pool object, not just the index.** deb-s3 writes the
-`Packages` index, then `Release`, then releases the lock, and only then uploads
-the `.deb` files themselves (`cli.rb:254-283`). A run killed in that tail — the
-long part, the part no longer holding the lock — leaves an index advertising a
-package, with the right SHA256, whose `.deb` is not there. So `show` reporting
-a matching digest is not enough to skip: the `Filename:` it names is checked
-with `aws s3api head-object` first, and anything short of "the object is there"
-means upload. `--verify` cannot cover this gap for you — it asks `deb-s3
-exist`, which reads the same manifest `show` does, so for a skipped package it
-re-asserts what `show` already said and never touches the pool.
+**A skip needs the `.deb`, not just the index.** deb-s3 writes the `Packages`
+index, then `Release`, then releases the lock, and only then uploads the `.deb`
+files themselves (`cli.rb:254-283`). A run killed in that tail — the long part,
+the part no longer holding the lock — leaves an index advertising a package,
+with the right SHA256, whose `.deb` is not there, or is still the previous
+build. The first 404s on install; the second is worse, because apt calls it a
+hash mismatch. So `show` reporting a matching digest is not enough to skip: the
+`Filename:` it names is checked with `aws s3api head-object`, and the object's
+length and MD5 — deb-s3 stamps the file's MD5 into the object's metadata when
+it stores it — are compared against the `Size:` and `MD5sum:` in the same
+stanza. Nothing is downloaded. Anything short of a match means upload.
+
+`--verify` cannot cover this gap for you: it asks `deb-s3 exist`, which reads
+the same manifest `show` does, so for a skipped package it re-asserts what
+`show` already said and never touches the pool.
 
 An `Architecture: all` package — the `mina-{network}-config` ones — is never
 skipped. deb-s3 merges those into every architecture manifest that exists at
@@ -142,11 +150,22 @@ in the last codename fails the command before the first one is published.
 
 This check is what makes the guarantee hold. `deb-s3 --fail-if-exists` is still
 passed, but it does not do this job: it raises only when the same name and
-version is in the manifest under a *different* pool file name, so a re-publish
-of the same file name falls through and replaces the pool object, reporting
-success. Verified against the pinned fork and a real S3 — publishing different
-bytes at a published version exits 0 and changes the `SHA256:` the repository
-serves. The flag is kept as a zero-cost backstop for the cases it does cover.
+version is in the manifest under a *different* pool file name, or when a
+crashed run left a `.deb-s3-temp` object whose bytes differ. A re-publish of
+the same file name matches neither, falls through, and replaces the pool
+object, reporting success. Verified against the pinned fork and a real S3 API
+(MinIO) — publishing different bytes at a published version exits 0 and
+changes the `SHA256:` the repository serves. The flag is kept as a zero-cost
+backstop for the cases it does cover.
+
+Two limits are worth knowing. A pool key carries the codename but not the
+component (`pool/{codename}/…`), so channels of one codename share it; the
+pre-flight only reads the channel it is publishing to, and cannot see a
+different channel publishing different bytes at the same version. And nothing
+here recovers a stale `dists/{codename}/{channel}/binary-/lockfile`: a run
+killed while holding the repository lock leaves one behind, and the next
+publish — including the retry that would repair a missing pool object — waits
+about ten minutes on it and then fails.
 
 The digest of the local file is only computed once `show` says the package is
 present, so a first publish pays for one manifest read per package and nothing
