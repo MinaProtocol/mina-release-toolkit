@@ -128,10 +128,12 @@ the part no longer holding the lock — leaves an index advertising a package,
 with the right SHA256, whose `.deb` is not there, or is still the previous
 build. The first 404s on install; the second is worse, because apt calls it a
 hash mismatch. So `show` reporting a matching digest is not enough to skip: the
-`Filename:` it names is checked with `aws s3api head-object`, and the object's
-length and MD5 — deb-s3 stamps the file's MD5 into the object's metadata when
-it stores it — are compared against the `Size:` and `MD5sum:` in the same
-stanza. Nothing is downloaded. Anything short of a match means upload.
+`Filename:` it names is checked with `aws s3api head-object`: the object's
+length is compared against the local package, and its MD5 — deb-s3 stamps the
+file's MD5 into the object's metadata when it stores it — against the
+`MD5sum:` in the same stanza. The stanza's own `Size:` is checked against the
+local package too. Nothing is downloaded. Anything short of a match means
+upload.
 
 `--verify` cannot cover this gap for you: it asks `deb-s3 exist`, which reads
 the same manifest `show` does, so for a skipped package it re-asserts what
@@ -149,7 +151,21 @@ covers every component of a codename while the repository lock covers one
 component of it, so a publish to a neighbouring channel can leave this
 channel's `Release` holding stale hashes over a `Packages` index that is itself
 correct, and apt then refuses the whole dist. Re-running the publish is what
-repairs that, and it can only repair it by asking deb-s3 to write.
+repairs that, and it can only repair it by asking deb-s3 to write. The repair
+is per channel: `Release` is rebuilt from the components this run touched plus
+whatever the `Release` it just read says about the others, so a codename whose
+`focal` and `noble` channels are both stale needs a re-run of each.
+
+"No package bytes" is a claim about the network, not about the work: deb-s3
+still reads and re-hashes every `.deb` it is given, inside the repository lock,
+and this command has already hashed them itself. A re-publish of a large batch
+is not free, it is only much cheaper than re-uploading.
+
+Publishing without `--debian-sign-key` into a repository that is signed is
+refused. Every upload rewrites `Release`, and with no key deb-s3 also deletes
+`Release.gpg` and leaves the inline-signed `InRelease` in place over a
+`Release` that no longer matches — so an unsigned re-run of a signed
+repository would either unsign it or leave apt trusting a stale index.
 
 Each codename is checked before *any* codename is uploaded, so a package that
 would be refused in the last codename fails the command before the first one is
