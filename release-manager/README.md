@@ -110,16 +110,35 @@ holds at that name, version and architecture, using `deb-s3 show`:
 | Repository | What happens |
 | --- | --- |
 | absent | uploaded |
-| present, same SHA256 | skipped, and reported as already published |
+| present, same SHA256, `.deb` really in the pool | skipped, and reported as already published |
+| present, same SHA256, pool object missing or unconfirmed | uploaded again, saying why |
 | present, different SHA256 | **the command fails**, naming both digests |
 
 So a re-run over the same folder — the retry after a partial upload — converges
 and exits 0 without needing a human, while a second, *different* build at the
-same version is refused instead of quietly replacing what users install. The
-packages that were skipped are still covered by `--verify`: a skip is proven,
-not assumed. If every package in a codename is already published, the
-`deb-s3 upload` call is skipped for it, but `--verify` and the CDN invalidation
-still run, because a previous partial run may have left a stale index cached.
+same version is refused instead of quietly replacing what users install.
+
+**A skip needs the pool object, not just the index.** deb-s3 writes the
+`Packages` index, then `Release`, then releases the lock, and only then uploads
+the `.deb` files themselves (`cli.rb:254-283`). A run killed in that tail — the
+long part, the part no longer holding the lock — leaves an index advertising a
+package, with the right SHA256, whose `.deb` is not there. So `show` reporting
+a matching digest is not enough to skip: the `Filename:` it names is checked
+with `aws s3api head-object` first, and anything short of "the object is there"
+means upload. `--verify` cannot cover this gap for you — it asks `deb-s3
+exist`, which reads the same manifest `show` does, so for a skipped package it
+re-asserts what `show` already said and never touches the pool.
+
+An `Architecture: all` package — the `mina-{network}-config` ones — is never
+skipped. deb-s3 merges those into every architecture manifest that exists at
+the time of the upload, so skipping one would leave an architecture that has
+appeared since it was first published without it.
+
+If every package in a codename is already published, the `deb-s3 upload` call is
+skipped for it, but `--verify` and the CDN invalidation still run, because a
+previous partial run may have left a stale index cached. Each codename is
+checked before *any* codename is uploaded, so a package that would be refused
+in the last codename fails the command before the first one is published.
 
 This check is what makes the guarantee hold. `deb-s3 --fail-if-exists` is still
 passed, but it does not do this job: it raises only when the same name and
@@ -134,7 +153,19 @@ present, so a first publish pays for one manifest read per package and nothing
 else. An output that cannot be read — a `show` that fails for any reason other
 than `No such package found.`, or a stanza with no usable `SHA256:` — fails the
 command rather than being assumed to mean "absent", for the same reason
-`--verify` refuses to read "no verdict" as "found".
+`--verify` refuses to read "no verdict" as "found". The pool check is the one
+place where an unanswered question is not fatal: uploading bytes that are
+already there is safe and idempotent, so a `head-object` that cannot run (no
+`aws` on PATH, no credentials) uploads instead of skipping.
+
+Two consequences worth stating plainly. The pre-flight needs a package's name,
+version and architecture, so a `.deb` whose file name is not
+`{name}_{version}_{arch}.deb` now fails the publish even without `--verify` —
+before, only `--verify` was that strict. And the pre-flight reads the version
+from the file name, while deb-s3 matches on the control file's `Version:`; the
+two agree for every version Mina builds, but a package carrying an epoch
+(`1:3.0.0-…`) would read as absent forever and the check would silently not
+engage. `--dry-run` stays offline and does not run the pre-flight at all.
 
 ##### Verification
 

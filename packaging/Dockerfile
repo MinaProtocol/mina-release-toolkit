@@ -81,7 +81,10 @@ RUN apt-get update && \
 
 # deb-s3 from the pinned fork, not rubygems: the flags release-manager passes
 # (--lock, --fail-if-exists, --cache-control, --skip-package-upload) are ours
-# and are not all in upstream 0.11.
+# and are not all in upstream 0.11. `publish` also needs two subcommands the
+# rubygems release does not have at all — `exist` for --verify and `show` for
+# the pre-flight that refuses to overwrite a published package — which is why
+# the last line runs the built binary rather than trusting the install.
 COPY deb-s3 /tmp/deb-s3
 RUN apt-get update && \
     apt-get install -y --no-install-recommends build-essential && \
@@ -91,6 +94,8 @@ RUN apt-get update && \
     apt-get purge -y build-essential && \
     apt-get autoremove -y && \
     rm -rf /tmp/deb-s3 /var/lib/apt/lists/* && \
+    deb-s3 help | grep -q ' exist ' && \
+    deb-s3 help | grep -q ' show ' && \
     deb-s3 --help > /dev/null
 
 # Copy the four release binaries into /usr/bin so they're on PATH.
