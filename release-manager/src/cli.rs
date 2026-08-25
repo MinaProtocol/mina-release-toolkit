@@ -406,7 +406,9 @@ pub struct PublishArgs {
     #[arg(long)]
     pub debian_sign_key: Option<String>,
 
-    /// Overwrite a package that is already in the repository at this version
+    /// Overwrite a package that is already in the repository at this version.
+    /// Skips the pre-flight check that otherwise refuses to replace published
+    /// bytes with different ones
     #[arg(long)]
     pub force: bool,
 

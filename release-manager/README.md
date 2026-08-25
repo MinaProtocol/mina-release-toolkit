@@ -102,6 +102,40 @@ One `deb-s3 upload` call is made per codename rather than per package:
 by package would take and release the lock, and rewrite the manifest, once per
 package.
 
+##### What is already there
+
+Before uploading, each package is compared against what the repository already
+holds at that name, version and architecture, using `deb-s3 show`:
+
+| Repository | What happens |
+| --- | --- |
+| absent | uploaded |
+| present, same SHA256 | skipped, and reported as already published |
+| present, different SHA256 | **the command fails**, naming both digests |
+
+So a re-run over the same folder — the retry after a partial upload — converges
+and exits 0 without needing a human, while a second, *different* build at the
+same version is refused instead of quietly replacing what users install. The
+packages that were skipped are still covered by `--verify`: a skip is proven,
+not assumed. If every package in a codename is already published, the
+`deb-s3 upload` call is skipped for it, but `--verify` and the CDN invalidation
+still run, because a previous partial run may have left a stale index cached.
+
+This check is what makes the guarantee hold. `deb-s3 --fail-if-exists` is still
+passed, but it does not do this job: it raises only when the same name and
+version is in the manifest under a *different* pool file name, so a re-publish
+of the same file name falls through and replaces the pool object, reporting
+success. Verified against the pinned fork and a real S3 — publishing different
+bytes at a published version exits 0 and changes the `SHA256:` the repository
+serves. The flag is kept as a zero-cost backstop for the cases it does cover.
+
+The digest of the local file is only computed once `show` says the package is
+present, so a first publish pays for one manifest read per package and nothing
+else. An output that cannot be read — a `show` that fails for any reason other
+than `No such package found.`, or a stanza with no usable `SHA256:` — fails the
+command rather than being assumed to mean "absent", for the same reason
+`--verify` refuses to read "no verdict" as "found".
+
 ##### Verification
 
 `--verify` asks the repository, package by package, whether it is now listed at
@@ -134,8 +168,9 @@ turned up yet are re-asked about.
 
 ##### Other flags
 
-- `--force` drops `--fail-if-exists`, so an existing package at that version is
-  overwritten. Off by default.
+- `--force` skips the pre-flight check above and drops `--fail-if-exists`, so an
+  existing package at that version is overwritten. It is the way to say the
+  published copy is the wrong one. Off by default.
 - `--skip-cache-invalidation` leaves the CloudFront cache alone. By default the
   `dists/{codename}/*` prefix is invalidated, so readers are not served a stale
   `Packages` index.
