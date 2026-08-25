@@ -716,6 +716,18 @@ fn says_no_such_package(out: &crate::process::CommandOutput) -> bool {
     out.stderr.to_ascii_lowercase().contains("no such package")
 }
 
+/// Did `aws s3api head-object` fail because the object is not there?
+///
+/// The CLI answers a missing key with `An error occurred (404) when calling
+/// the HeadObject operation: Not Found` and exit 254. Every other failure —
+/// `AccessDenied` on a least-privilege role, a missing bucket, a throttle —
+/// means we did not get to look, which is a different fact from "absent" for
+/// the same reason [`says_no_such_package`] draws that line for `deb-s3`.
+fn head_object_says_absent(out: &crate::process::CommandOutput) -> bool {
+    let stderr = out.stderr.to_ascii_lowercase();
+    stderr.contains("(404)") || stderr.contains("not found")
+}
+
 /// Refuse to publish without a signing key into a repository that is signed.
 ///
 /// Every `deb-s3 upload` rewrites `dists/{codename}/Release`, and with no
@@ -752,9 +764,21 @@ fn refuse_to_unsign(
                     codename, key
                 )));
             }
-            // Absent, or unanswerable. Neither is a signed repository we can
-            // point at, so neither is a reason to stop.
-            Ok(_) => {}
+            // A 404 is an answer: there is no signature here.
+            Ok(out) if head_object_says_absent(&out) => {}
+            // Anything else is a failure to look, and it has to say so.
+            // Silence here would be indistinguishable from "not signed", and
+            // this is the one check whose whole job is to notice.
+            Ok(out) => {
+                println!(
+                    "    ⚠️  Could not check whether {} is signed (aws s3api head-object \
+                     exit {}: {}) — publishing unsigned",
+                    codename,
+                    out.status,
+                    blank_if_empty(&out.stderr)
+                );
+                return Ok(());
+            }
             Err(e) => {
                 println!(
                     "    ⚠️  Could not check whether {} is signed ({}) — publishing unsigned",
@@ -833,6 +857,11 @@ fn pool_object_matches(
     // The metadata deb-s3 wrote first; ETag as a fallback, and only when it
     // is a plain MD5 — a multipart upload's ETag is a digest of digests with
     // a `-partcount` suffix and cannot be compared with anything here.
+    //
+    // The filter changes the diagnosis, not the decision: the expected digest
+    // is validated as 32 hex characters, so a multipart ETag could never
+    // compare equal either way. Without it the answer would be "holds
+    // different bytes", which is a claim we have not established.
     let actual_md5 = head
         .get("Metadata")
         .and_then(|m| m.as_object())
@@ -2133,6 +2162,55 @@ mod tests {
         assert!(!skipped_given(pool_holding_only(STANZA_SIZE, None, Some("abc123-7"))).await);
     }
 
+    #[test]
+    fn an_uncomparable_pool_object_is_not_reported_as_a_different_one() {
+        // The multipart filter cannot change the verdict — the expected digest
+        // is 32 hex characters, so a `-partcount` ETag could never match — but
+        // it does decide what the operator is told, and "holds different
+        // bytes" would be a claim nothing here established.
+        let exec = MockCommandExecutor::new();
+        exec.expect_args_starting_with(
+            "aws",
+            &["s3api", "head-object"],
+            pool_holding_only(STANZA_SIZE, None, Some("abc123-7")),
+        );
+
+        let reason = pool_object_matches(
+            &exec,
+            &S3Config::default(),
+            "b",
+            "pool/x/y.deb",
+            Some(STANZA_SIZE),
+            Some(STANZA_MD5),
+        )
+        .unwrap_err();
+
+        assert!(reason.contains("no MD5 to compare"), "{}", reason);
+        assert!(
+            !reason.contains("different bytes"),
+            "an object we could not compare must not be reported as a different one: {}",
+            reason
+        );
+    }
+
+    #[test]
+    fn an_index_entry_with_no_md5_is_blamed_on_the_index_not_the_object() {
+        let exec = MockCommandExecutor::new();
+        exec.expect_args_starting_with("aws", &["s3api", "head-object"], pool_present());
+
+        let reason = pool_object_matches(
+            &exec,
+            &S3Config::default(),
+            "b",
+            "pool/x/y.deb",
+            Some(STANZA_SIZE),
+            None,
+        )
+        .unwrap_err();
+
+        assert!(reason.contains("index entry"), "{}", reason);
+    }
+
     #[tokio::test]
     async fn a_head_object_answer_that_is_not_json_is_uploaded_over() {
         // An `output = text` in the agent's aws config would do this. The
@@ -2401,6 +2479,59 @@ mod tests {
         assert!(err.contains("is signed"), "{}", err);
         assert!(err.contains("--debian-sign-key"), "{}", err);
         assert_eq!(subcommand_calls(&exec, "upload"), 0);
+    }
+
+    #[tokio::test]
+    async fn a_repository_signed_only_with_release_gpg_is_also_protected() {
+        // A repository can carry Release.gpg without InRelease. Checking only
+        // the first name would leave that one unprotected.
+        let root = make_tree(&[("bullseye", &["mina-devnet_4.0.0-abc1234_amd64.deb"])]);
+        let exec = MockCommandExecutor::new();
+        exec.expect(
+            "aws",
+            |a| a.iter().any(|x| x.ends_with("dists/bullseye/InRelease")),
+            pool_missing(),
+        );
+        exec.expect(
+            "aws",
+            |a| a.iter().any(|x| x.ends_with("dists/bullseye/Release.gpg")),
+            pool_present(),
+        );
+        exec.expect_args_starting_with("deb-s3", &["show"], absent());
+        exec.expect_args_starting_with("deb-s3", &["upload"], CommandOutput::success(""));
+
+        let err = execute_with(args_for(root.path()), &exec, &S3Config::default())
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("Release.gpg"), "{}", err);
+        assert_eq!(transferring_uploads(&exec), 0);
+    }
+
+    #[tokio::test]
+    async fn a_signature_check_that_could_not_look_says_so_and_carries_on() {
+        // 403 on a least-privilege role, a throttle, a missing bucket: none
+        // of those mean "not signed", and silence would be indistinguishable
+        // from an answer.
+        let root = make_tree(&[("bullseye", &["mina-devnet_4.0.0-abc1234_amd64.deb"])]);
+        let exec = MockCommandExecutor::new();
+        exec.expect(
+            "aws",
+            |a| a.iter().any(|x| x.contains("dists/bullseye/")),
+            CommandOutput::failure(254, "An error occurred (403) when calling HeadObject"),
+        );
+        expect_pool_head(&exec, pool_missing());
+        exec.expect_args_starting_with("deb-s3", &["show"], absent());
+        exec.expect_args_starting_with("deb-s3", &["upload"], CommandOutput::success(""));
+
+        execute_with(args_for(root.path()), &exec, &S3Config::default())
+            .await
+            .unwrap();
+
+        // It publishes — an unsigned repository is legitimate — but it asked
+        // only once per name before giving up on the question.
+        assert_eq!(transferring_uploads(&exec), 1);
     }
 
     #[tokio::test]
