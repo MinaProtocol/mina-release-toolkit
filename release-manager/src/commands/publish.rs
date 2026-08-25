@@ -2620,13 +2620,13 @@ mod tests {
         let head = |key: &str| -> std::process::Output {
             aws(&["s3api", "head-object", "--bucket", bucket, "--key", key])
         };
-        let head_before = head(pool_key);
+        let head_first = head(pool_key);
         assert!(
-            head_before.status.success(),
+            head_first.status.success(),
             "the pool object should exist after the first publish: {}",
-            String::from_utf8_lossy(&head_before.stderr)
+            String::from_utf8_lossy(&head_first.stderr)
         );
-        let modified_before = String::from_utf8_lossy(&head_before.stdout).into_owned();
+        let head_first = String::from_utf8_lossy(&head_first.stdout).into_owned();
 
         // The claim the whole skip rests on: deb-s3 stamps the file's MD5
         // into the object's metadata, and the temp-to-final copy keeps it.
@@ -2635,7 +2635,7 @@ mod tests {
         let stanza_md5 = md5_from_show_output(&String::from_utf8_lossy(&original.stdout))
             .expect("no MD5sum in the show stanza");
         let head_json: serde_json::Value =
-            serde_json::from_str(&modified_before).expect("head-object did not answer with JSON");
+            serde_json::from_str(&head_first).expect("head-object did not answer with JSON");
         assert_eq!(
             head_json
                 .get("Metadata")
@@ -2643,7 +2643,7 @@ mod tests {
                 .and_then(|v| v.as_str()),
             Some(stanza_md5.as_str()),
             "the pool object lost the md5 metadata deb-s3 wrote: {}",
-            modified_before
+            head_first
         );
 
         // A sentinel for "was this object rewritten?". `put_object` does not
@@ -2665,6 +2665,24 @@ mod tests {
             "could not tag the pool object: {}",
             String::from_utf8_lossy(&tagged.stderr)
         );
+        // Identity of the stored object, rather than the whole head-object
+        // answer: fields unrelated to the bytes come and go between S3
+        // implementations (tagging adds a `TagCount` on some), and a
+        // difference there is not a re-upload.
+        let stored_identity = |key: &str| -> (String, String) {
+            let out = head(key);
+            let json: serde_json::Value =
+                serde_json::from_str(&String::from_utf8_lossy(&out.stdout))
+                    .expect("head-object did not answer with JSON");
+            let field = |name: &str| {
+                json.get(name)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string()
+            };
+            (field("ETag"), field("LastModified"))
+        };
+        let identity_before = stored_identity(pool_key);
 
         // 1. Re-publishing the identical folder converges: this is the retry
         //    after a partial upload, and it must not need a human.
@@ -2689,8 +2707,8 @@ mod tests {
             String::from_utf8_lossy(&tags.stdout)
         );
         assert_eq!(
-            String::from_utf8_lossy(&head(pool_key).stdout),
-            modified_before,
+            stored_identity(pool_key),
+            identity_before,
             "the pool object was rewritten — the package was not skipped"
         );
 
