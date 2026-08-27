@@ -110,7 +110,7 @@ async fn check_prerequisites(command: &Commands) -> ManagerResult<()> {
         }
         Commands::PublishFromCache(args) => {
             if args.backend == "gs" {
-                check_app("gsutil").await?;
+                check_app("gcloud").await?;
             }
             if args.verify {
                 check_app("docker").await?;
