@@ -77,6 +77,18 @@ impl StorageClient {
     }
 }
 
+/// Extracts the MD5 digest from `gcloud storage hash --format=value(md5_hash)`
+/// output, which prints one bare digest per line. A wildcard matching several
+/// objects therefore yields several lines and the first one wins, preserving the
+/// behaviour of the previous `gsutil hash` parser.
+fn parse_md5_output(output: &str) -> Option<String> {
+    output
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(str::to_string)
+}
+
 #[async_trait]
 impl StorageOperations for StorageClient {
     async fn list(&self, path: &str) -> ManagerResult<Vec<String>> {
@@ -87,8 +99,8 @@ impl StorageOperations for StorageClient {
                 self.run_command(&mut cmd).await?
             }
             StorageBackend::Gs => {
-                let mut cmd = Command::new("gsutil");
-                cmd.args(["list", path]);
+                let mut cmd = Command::new("gcloud");
+                cmd.args(["storage", "ls", path]);
                 self.run_command(&mut cmd).await?
             }
             StorageBackend::Hetzner {
@@ -121,17 +133,20 @@ impl StorageOperations for StorageClient {
                 result.split_whitespace().next().unwrap_or("").to_string()
             }
             StorageBackend::Gs => {
-                let mut cmd = Command::new("gsutil");
-                cmd.args(["hash", "-h", "-m", path]);
+                let mut cmd = Command::new("gcloud");
+                cmd.args([
+                    "storage",
+                    "hash",
+                    "--hex",
+                    "--skip-crc32c",
+                    "--format=value(md5_hash)",
+                    path,
+                ]);
                 let result = self.run_command(&mut cmd).await?;
 
-                // Parse gsutil hash output
-                for line in result.lines() {
-                    if line.contains("Hash (md5)") {
-                        if let Some(hash) = line.split_whitespace().nth(2) {
-                            return Ok(hash.to_string());
-                        }
-                    }
+                // Parse `gcloud storage hash` output
+                if let Some(hash) = parse_md5_output(&result) {
+                    return Ok(hash);
                 }
                 return Err(ManagerError::StorageError(
                     "Could not parse MD5 hash".to_string(),
@@ -167,8 +182,8 @@ impl StorageOperations for StorageClient {
                 self.run_command(&mut cmd).await?;
             }
             StorageBackend::Gs => {
-                let mut cmd = Command::new("gsutil");
-                cmd.args(["cp", remote_path, local_path]);
+                let mut cmd = Command::new("gcloud");
+                cmd.args(["storage", "cp", remote_path, local_path]);
                 self.run_command(&mut cmd).await?;
             }
             StorageBackend::Hetzner {
@@ -218,8 +233,8 @@ impl StorageOperations for StorageClient {
                 self.run_command(&mut cmd).await?;
             }
             StorageBackend::Gs => {
-                let mut cmd = Command::new("gsutil");
-                cmd.args(["cp", local_path, remote_path]);
+                let mut cmd = Command::new("gcloud");
+                cmd.args(["storage", "cp", local_path, remote_path]);
                 self.run_command(&mut cmd).await?;
             }
             StorageBackend::Hetzner {
@@ -320,4 +335,36 @@ pub async fn get_cached_debian_or_download(
         .await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_md5_output_single_line() {
+        assert_eq!(
+            parse_md5_output("d41d8cd98f00b204e9800998ecf8427e\n"),
+            Some("d41d8cd98f00b204e9800998ecf8427e".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_md5_output_returns_first_of_many() {
+        let output = "d41d8cd98f00b204e9800998ecf8427e\n9e107d9d372bb6826bd81d3542a419d6\n";
+        assert_eq!(
+            parse_md5_output(output),
+            Some("d41d8cd98f00b204e9800998ecf8427e".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_md5_output_empty() {
+        assert_eq!(parse_md5_output(""), None);
+    }
+
+    #[test]
+    fn test_parse_md5_output_whitespace_only() {
+        assert_eq!(parse_md5_output("  \n\t\n \n"), None);
+    }
 }

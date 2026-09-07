@@ -86,7 +86,7 @@ done
 | Dhall 1.40+ | `dhall-buildkite` |
 | `dpkg-deb`, `fakeroot`, `debsigs`, `debsig-verify`, `gpg` | `deb-toolkit` integration tests |
 | Docker | repository welcome-page tests under `debian/` |
-| `gsutil`, AWS CLI | `release-manager` GCS / S3 operations |
+| `gcloud storage`, AWS CLI | `release-manager` GCS / S3 operations |
 
 ## CI
 
@@ -106,7 +106,7 @@ The `deb-toolkit` submodule has its own CI in its own repo.
 Several components touch shared storage. The conventions are:
 
 - **Google Cloud Storage** (`gs://...`) — CI cache and primary artifact
-  staging. Requires authenticated `gsutil`.
+  staging. Requires authenticated `gcloud`.
 - **Hetzner storage box** (SSH+SFTP) — long-term archival and CI cache
   fallback. Configured via `HETZNER_USER`, `HETZNER_HOST`, `HETZNER_KEY`.
 - **Local filesystem** (`/var/storagebox/` by default) — local dev /

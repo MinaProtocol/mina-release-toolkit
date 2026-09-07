@@ -31,7 +31,7 @@ This tool handles the complete lifecycle of build artifacts including publishing
 Make sure you have Rust installed. If not, install it from [rustup.rs](https://rustup.rs/).
 
 Additional tools required depending on operations:
-- `gsutil` (for Google Cloud Storage operations)
+- `gcloud` (for Google Cloud Storage operations, via `gcloud storage`)
 - `docker` (for Docker operations and verification)
 - `deb-s3` (for Debian repository fixes)
 - SSH access and keys (for Hetzner operations)
@@ -271,7 +271,7 @@ release-manager pull \
 ### Storage Backends
 
 #### Google Cloud Storage (gs)
-- Requires `gsutil` to be installed and configured
+- Requires `gcloud` to be installed and configured
 - Uses `gs://buildkite_k8s/coda/shared` as root path
 
 #### Hetzner
