@@ -50,6 +50,23 @@ struct ApiArtifact {
     state: String,
 }
 
+/// A build to create. `commit` accepts `HEAD`, which Buildkite resolves
+/// against the branch.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NewBuild {
+    pub commit: String,
+    pub branch: String,
+    pub message: String,
+    pub env: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, Deserialize)]
+pub struct CreatedBuild {
+    pub number: u64,
+    pub state: String,
+    pub web_url: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct ApiPipelineBuild {
     number: u64,
@@ -223,6 +240,54 @@ impl BuildkiteClient {
         Ok(builds.into_iter().map(Into::into).collect())
     }
 
+    /// Builds Buildkite is running or has scheduled, across the whole
+    /// organisation. Used to refuse deleting a cache folder that CI is using.
+    pub async fn builds_in_flight(&self) -> OpsResult<Vec<BuildSummary>> {
+        let url = format!(
+            "{}/organizations/{}/builds?state[]=running&state[]=scheduled&state[]=creating&per_page=100",
+            self.api_root, self.org
+        );
+        let builds: Vec<ApiBuild> = self.get(&url).await?;
+        Ok(builds.into_iter().map(Into::into).collect())
+    }
+
+    /// Creates a build. The only write this tool performs.
+    ///
+    /// Everything after creation belongs to Buildkite: the returned URL is
+    /// where the caller is sent, and no build state is rendered here.
+    pub async fn create_build(
+        &self,
+        pipeline: &str,
+        request: &NewBuild,
+    ) -> OpsResult<CreatedBuild> {
+        let url = format!(
+            "{}/organizations/{}/pipelines/{}/builds",
+            self.api_root, self.org, pipeline
+        );
+
+        let response = self
+            .http
+            .post(&url)
+            .bearer_auth(&self.token)
+            .header("User-Agent", "mina-ops")
+            .json(request)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(OpsError::Buildkite(format!(
+                "{status} creating a build in '{pipeline}': {}",
+                body.trim()
+            )));
+        }
+        response
+            .json::<CreatedBuild>()
+            .await
+            .map_err(OpsError::from)
+    }
+
     /// Filenames of a build's artifacts that Buildkite still holds.
     ///
     /// Artifacts in any state other than `finished` are excluded: an expired
@@ -245,14 +310,21 @@ impl BuildkiteClient {
     /// A build whose artifact list cannot be read keeps `artifact_count =
     /// None`, so "not asked" stays distinguishable from "none left".
     pub async fn enrich_with_artifacts(&self, builds: &mut [BuildSummary]) -> Vec<String> {
-        let results = stream::iter(builds.iter().enumerate().map(|(index, build)| {
-            let pipeline = build.pipeline.clone();
-            let number = build.number;
-            async move {
+        // Owned tuples rather than borrowed builds: a stream whose items
+        // borrow cannot satisfy the higher-ranked lifetime bound that callers
+        // such as the HTTP server require.
+        let wanted: Vec<(usize, String, u64)> = builds
+            .iter()
+            .enumerate()
+            .map(|(index, build)| (index, build.pipeline.clone(), build.number))
+            .collect();
+
+        let results = stream::iter(wanted.into_iter().map(
+            |(index, pipeline, number)| async move {
                 let outcome = self.artifact_filenames(&pipeline, number).await;
                 (index, pipeline, number, outcome)
-            }
-        }))
+            },
+        ))
         .buffer_unordered(MAX_CONCURRENT_REQUESTS)
         .collect::<Vec<_>>()
         .await;

@@ -9,11 +9,15 @@
 //! from it rather than copied.
 
 pub mod adapters;
+pub mod cache_admin;
 pub mod config;
 pub mod error;
 pub mod git;
+pub mod hardfork;
 pub mod inventory;
 pub mod mcp;
 pub mod model;
 pub mod nightly;
+pub mod pipelines;
 pub mod report;
+pub mod serve;
