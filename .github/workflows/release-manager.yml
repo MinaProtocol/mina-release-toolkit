@@ -87,7 +87,11 @@ jobs:
         cd deb-s3
         gem build deb-s3.gemspec
         sudo gem install --no-document ./deb-s3-*.gem
-        deb-s3 help | grep -q ' exist ' || { echo "deb-s3 has no exist subcommand"; exit 1; }
+        # publish depends on both: `exist` for --verify, `show` for the
+        # pre-flight that refuses to overwrite a published package.
+        for sub in exist show; do
+          deb-s3 help | grep -q " $sub " || { echo "deb-s3 has no $sub subcommand"; exit 1; }
+        done
 
     - name: Run integration tests (Ubuntu)
       if: runner.os == 'Linux'

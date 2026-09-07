@@ -33,7 +33,10 @@ Make sure you have Rust installed. If not, install it from [rustup.rs](https://r
 Additional tools required depending on operations:
 - `gcloud` (for Google Cloud Storage operations, via `gcloud storage`)
 - `docker` (for Docker operations and verification)
-- `deb-s3` (for Debian repository fixes)
+- `deb-s3` (for Debian repository operations — the pinned fork, which unlike
+  the rubygems release has the `exist` and `show` subcommands `publish` uses)
+- `aws` (for CloudFront invalidation, and for `publish`'s pool-object check —
+  without it nothing breaks, but no package is ever skipped as unchanged)
 - SSH access and keys (for Hetzner operations)
 
 ### Building
@@ -102,6 +105,118 @@ One `deb-s3 upload` call is made per codename rather than per package:
 by package would take and release the lock, and rewrite the manifest, once per
 package.
 
+##### What is already there
+
+Before uploading, each package is compared against what the repository already
+holds at that name, version and architecture, using `deb-s3 show`:
+
+| Repository | What happens |
+| --- | --- |
+| absent | uploaded |
+| present, same SHA256, pool object holds those bytes | skipped, and reported as already published (except `Architecture: all`, below) |
+| present, same SHA256, pool object missing, different, or unconfirmed | uploaded again, saying why |
+| present, different SHA256 | **the command fails**, naming both digests |
+
+So a re-run over the same folder — the retry after a partial upload — converges
+and exits 0 without needing a human, while a second, *different* build at the
+same version is refused instead of quietly replacing what users install.
+
+**A skip needs the `.deb`, not just the index.** deb-s3 writes the `Packages`
+index, then `Release`, then releases the lock, and only then uploads the `.deb`
+files themselves (`cli.rb:254-283`). A run killed in that tail — the long part,
+the part no longer holding the lock — leaves an index advertising a package,
+with the right SHA256, whose `.deb` is not there, or is still the previous
+build. The first 404s on install; the second is worse, because apt calls it a
+hash mismatch. So `show` reporting a matching digest is not enough to skip: the
+`Filename:` it names is checked with `aws s3api head-object`: the object's
+length is compared against the local package, and its MD5 — deb-s3 stamps the
+file's MD5 into the object's metadata when it stores it — against the
+`MD5sum:` in the same stanza. The stanza's own `Size:` is checked against the
+local package too. Nothing is downloaded. Anything short of a match means
+upload.
+
+`--verify` cannot cover this gap for you: it asks `deb-s3 exist`, which reads
+the same manifest `show` does, so for a skipped package it re-asserts what
+`show` already said and never touches the pool.
+
+An `Architecture: all` package — the `mina-{network}-config` ones — is never
+skipped. deb-s3 merges those into every architecture manifest that exists at
+the time of the upload, so skipping one would leave an architecture that has
+appeared since it was first published without it.
+
+If every package in a codename is already published, `deb-s3 upload` still runs
+for it — with `--skip-package-upload`, so no package bytes move — and `--verify`
+and the CDN invalidation still run too. That is not ceremony. `dists/{codename}/Release`
+covers every component of a codename while the repository lock covers one
+component of it, so a publish to a neighbouring channel can leave this
+channel's `Release` holding stale hashes over a `Packages` index that is itself
+correct, and apt then refuses the whole dist. Re-running the publish is what
+repairs that, and it can only repair it by asking deb-s3 to write. The repair
+is per channel: `Release` is rebuilt from the components this run touched plus
+whatever the `Release` it just read says about the others, so a codename whose
+`focal` and `noble` channels are both stale needs a re-run of each.
+
+"No package bytes" is a claim about the network, not about the work: deb-s3
+still reads and re-hashes every `.deb` it is given, inside the repository lock,
+and this command has already hashed them itself. A re-publish of a large batch
+is not free, it is only much cheaper than re-uploading.
+
+Publishing without `--debian-sign-key` into a repository that is signed is
+refused. Every upload rewrites `Release`, and with no key deb-s3 also deletes
+`Release.gpg` and leaves the inline-signed `InRelease` in place over a
+`Release` that no longer matches — so an unsigned re-run of a signed
+repository would either unsign it or leave apt trusting a stale index.
+
+Each codename is checked before *any* codename is uploaded, so a package that
+would be refused in the last codename fails the command before the first one is
+published.
+
+This check is what makes the guarantee hold. `deb-s3 --fail-if-exists` is still
+passed, but it does not do this job: it raises only when the same name and
+version is in the manifest under a *different* pool file name, or when a
+crashed run left a `.deb-s3-temp` object whose bytes differ. A re-publish of
+the same file name matches neither, falls through, and replaces the pool
+object, reporting success. Verified against the pinned fork and a real S3 API
+(MinIO) — publishing different bytes at a published version exits 0 and
+changes the `SHA256:` the repository serves. The flag is kept as a zero-cost
+backstop for the cases it does cover.
+
+Two limits are worth knowing. A pool key carries the codename but not the
+component (`pool/{codename}/…`), so channels of one codename share it; the
+pre-flight only reads the channel it is publishing to, and cannot see a
+different channel publishing different bytes at the same version. And nothing
+here recovers a stale `dists/{codename}/{channel}/binary-/lockfile`: a run
+killed while holding the repository lock leaves one behind, and the next
+publish — including the retry that would repair a missing pool object — waits
+about ten minutes on it and then fails.
+
+The digest of the local file is only computed once `show` says the package is
+present, so a first publish pays for one `deb-s3 show` per package and nothing
+else. That is not free: `show` reads and parses the whole `Packages` index for
+the codename and architecture, and with `--preserve-versions` that index
+carries every version ever published, so on an old channel the pre-flight can
+be the slowest part of the command. It is still far cheaper than re-uploading
+the packages, which is the alternative.
+
+An output that cannot be read — a `show` that fails for any reason other than
+`No such package found.`, or a stanza with no usable `SHA256:` — fails the
+command rather than being assumed to mean "absent", for the same reason
+`--verify` refuses to read "no verdict" as "found". The exceptions are the two
+questions whose answer only decides whether to skip: a `head-object` that
+cannot run (no `aws` on PATH, no credentials, an unreadable answer) and a
+stanza with no `Filename:` to check. Both upload instead, because at that
+point the digests have already matched and uploading bytes that are already
+there is safe and idempotent.
+
+Two consequences worth stating plainly. The pre-flight needs a package's name,
+version and architecture, so a `.deb` whose file name is not
+`{name}_{version}_{arch}.deb` now fails the publish even without `--verify` —
+before, only `--verify` was that strict. And the pre-flight reads the version
+from the file name, while deb-s3 matches on the control file's `Version:`; the
+two agree for every version Mina builds, but a package carrying an epoch
+(`1:3.0.0-…`) would read as absent forever and the check would silently not
+engage. `--dry-run` stays offline and does not run the pre-flight at all.
+
 ##### Verification
 
 `--verify` asks the repository, package by package, whether it is now listed at
@@ -134,8 +249,9 @@ turned up yet are re-asked about.
 
 ##### Other flags
 
-- `--force` drops `--fail-if-exists`, so an existing package at that version is
-  overwritten. Off by default.
+- `--force` skips the pre-flight check above and drops `--fail-if-exists`, so an
+  existing package at that version is overwritten. It is the way to say the
+  published copy is the wrong one. Off by default.
 - `--skip-cache-invalidation` leaves the CloudFront cache alone. By default the
   `dists/{codename}/*` prefix is invalidated, so readers are not served a stale
   `Packages` index.
