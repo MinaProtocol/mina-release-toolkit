@@ -478,7 +478,8 @@ pub struct DockerPromoteArgs {
 
 #[derive(Args)]
 pub struct DockerVerifyArgs {
-    /// Full image reference: <registry>/<name>:<tag>
+    /// Full image reference <registry>/<name>:<tag>, or with --no-pull a
+    /// local image ID (sha256:<hex>)
     #[arg(long)]
     pub image: String,
 

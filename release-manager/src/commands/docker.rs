@@ -54,8 +54,21 @@ pub fn promote_with(args: &DockerPromoteArgs, exec: &dyn CommandExecutor) -> Man
 ///
 /// The directory must hold `resolve-check-script.sh`, which maps a package
 /// name to the check script to run (mina's `scripts/verify/`).
+///
+/// With `--no-pull`, `image` may also be a local image ID (`sha256:<hex>`).
+/// An ID names the exact bytes a job built; a tag in a daemon shared with
+/// other jobs can be re-pointed by them.
 pub fn verify_with(args: &DockerVerifyArgs, exec: &dyn CommandExecutor) -> ManagerResult<()> {
-    validate_ref(&args.image)?;
+    if is_image_id(&args.image) {
+        if !args.no_pull {
+            return Err(ManagerError::ValidationError(format!(
+                "'{}' is a local image ID; it needs --no-pull",
+                args.image
+            )));
+        }
+    } else {
+        validate_ref(&args.image)?;
+    }
     if args.package.is_empty() {
         return Err(ManagerError::ValidationError(
             "--package cannot be empty".to_string(),
@@ -135,6 +148,12 @@ fn platform(arch: &str) -> ManagerResult<String> {
             other
         ))),
     }
+}
+
+fn is_image_id(image: &str) -> bool {
+    image
+        .strip_prefix("sha256:")
+        .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
 /// A reference must name a repository and a tag: `<repo>/<name>:<tag>`.
@@ -328,6 +347,26 @@ mod tests {
     }
 
     #[test]
+    fn verify_accepts_a_local_image_id_only_without_pull() {
+        let id = format!("sha256:{}", "ab".repeat(32));
+        let dir = checks_dir();
+        let exec = ok_docker();
+        let mut args = verify_args(dir.path());
+        args.image = id.clone();
+        assert!(verify_with(&args, &exec).is_err());
+        assert_eq!(exec.call_count("docker"), 0);
+
+        args.no_pull = true;
+        verify_with(&args, &exec).unwrap();
+        let calls = argvs(&exec);
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].contains(&id));
+
+        args.image = "sha256:abc".to_string();
+        assert!(verify_with(&args, &exec).is_err());
+    }
+
+    #[test]
     fn verify_fails_when_the_check_fails() {
         let dir = checks_dir();
         let exec = MockCommandExecutor::new();
@@ -445,6 +484,28 @@ mod tests {
         verify("mina-daemon").expect("promoted image passes its check");
         // A package the resolver rejects must fail the verification.
         assert!(verify("not-a-mina-package").is_err());
+
+        // The pulled image again, by its local ID and without a pull.
+        let id = exec
+            .run(
+                "docker",
+                &["image", "inspect", "--format", "{{.Id}}", &target],
+            )
+            .expect("docker runs")
+            .stdout
+            .trim()
+            .to_string();
+        verify_with(
+            &DockerVerifyArgs {
+                image: id,
+                package: "mina-daemon".to_string(),
+                check_scripts_dir: checks.path().to_path_buf(),
+                arch: "amd64".to_string(),
+                no_pull: true,
+            },
+            &exec,
+        )
+        .expect("verify by local image ID");
 
         let _ = exec.run("docker", &["rmi", &target]);
     }

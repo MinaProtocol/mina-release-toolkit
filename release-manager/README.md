@@ -357,7 +357,8 @@ release-manager docker verify \
   [--no-pull]
 ```
 
-`--no-pull` checks the image already in the local daemon.
+`--no-pull` checks the image already in the local daemon; `--image` may then
+also be a local image ID (`sha256:<hex>`), which another job cannot re-point.
 
 #### Fix
 
