@@ -63,6 +63,9 @@ enum Commands {
     Reversion(ReversionArgs),
     /// Show release-progress report (what's published per channel/codename/arch)
     Progress(ProgressArgs),
+    /// Promote or verify fully-named docker image references
+    #[command(subcommand)]
+    Docker(DockerCommand),
 }
 
 #[tokio::main]
@@ -87,6 +90,8 @@ async fn main() -> ManagerResult<()> {
         Commands::Pull(args) => commands::pull::execute(args).await,
         Commands::Reversion(args) => commands::reversion::execute(args).await,
         Commands::Progress(args) => commands::progress::execute(args).await,
+        Commands::Docker(DockerCommand::Promote(args)) => commands::docker::promote(args).await,
+        Commands::Docker(DockerCommand::Verify(args)) => commands::docker::verify(args).await,
     };
 
     match result {
@@ -122,6 +127,9 @@ async fn check_prerequisites(command: &Commands) -> ManagerResult<()> {
             }
         }
         Commands::Verify(_) => {
+            check_app("docker").await?;
+        }
+        Commands::Docker(_) => {
             check_app("docker").await?;
         }
         Commands::Fix(_) => {

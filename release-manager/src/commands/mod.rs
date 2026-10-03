@@ -1,3 +1,4 @@
+pub mod docker;
 pub mod fix;
 pub mod persist;
 pub mod progress;
