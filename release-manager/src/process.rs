@@ -179,6 +179,11 @@ impl MockCommandExecutor {
     }
 }
 
+/// MinIO image for the integration tests. Docker Hub no longer serves
+/// `minio/minio`; the same releases are published on quay.io.
+#[cfg(all(test, feature = "integration-test"))]
+pub const MINIO_IMAGE: &str = "quay.io/minio/minio";
+
 /// Executor that runs some programs for real and mocks the rest. Useful for
 /// integration tests that want a real `deb-s3` against a MinIO container but
 /// don't want to depend on `dig`, `aws cloudfront`, etc.

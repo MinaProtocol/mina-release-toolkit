@@ -2727,9 +2727,10 @@ mod tests {
     #[cfg(feature = "integration-test")]
     #[tokio::test]
     async fn publish_against_minio() {
-        use crate::process::{command_available, run_with_env, MixedExecutor};
+        use crate::process::{command_available, run_with_env, MixedExecutor, MINIO_IMAGE};
         use testcontainers_modules::minio::MinIO;
         use testcontainers_modules::testcontainers::runners::AsyncRunner;
+        use testcontainers_modules::testcontainers::ImageExt;
 
         for tool in ["docker", "deb-s3", "dpkg-deb", "aws"] {
             if !command_available(tool) {
@@ -2739,6 +2740,7 @@ mod tests {
         }
 
         let container = MinIO::default()
+            .with_name(MINIO_IMAGE)
             .start()
             .await
             .expect("minio container start");

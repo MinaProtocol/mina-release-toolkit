@@ -503,9 +503,10 @@ SHA256: deadbeef
     #[cfg(feature = "integration-test")]
     #[tokio::test]
     async fn validate_against_minio() {
-        use crate::process::{CommandOutput, MixedExecutor};
+        use crate::process::{CommandOutput, MixedExecutor, MINIO_IMAGE};
         use testcontainers_modules::minio::MinIO;
         use testcontainers_modules::testcontainers::runners::AsyncRunner;
+        use testcontainers_modules::testcontainers::ImageExt;
 
         // Skip if the host tools aren't available.
         for tool in ["docker", "deb-s3", "dpkg-deb"] {
@@ -517,6 +518,7 @@ SHA256: deadbeef
 
         // ---- 1. start MinIO ----
         let container = MinIO::default()
+            .with_name(MINIO_IMAGE)
             .start()
             .await
             .expect("minio container start");
