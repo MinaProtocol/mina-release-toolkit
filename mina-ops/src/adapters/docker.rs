@@ -53,10 +53,16 @@ impl DockerClient {
     }
 
     pub async fn manifest_presence_many(&self, references: &[String]) -> Vec<Presence> {
-        stream::iter(references.iter().map(|r| self.manifest_presence(r)))
-            .buffered(MAX_CONCURRENT_CHECKS)
-            .collect()
-            .await
+        // Owned references, for the same lifetime reason as above.
+        let owned: Vec<String> = references.to_vec();
+        stream::iter(
+            owned
+                .into_iter()
+                .map(|reference| async move { self.manifest_presence(&reference).await }),
+        )
+        .buffered(MAX_CONCURRENT_CHECKS)
+        .collect()
+        .await
     }
 }
 
