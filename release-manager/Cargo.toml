@@ -44,4 +44,4 @@ features = ["json", "stream", "rustls-tls"]
 tokio-test = "0.4"
 tempfile = "3.0"
 wiremock = "0.6"
-testcontainers-modules = { version = "0.13", features = ["minio"] }
+testcontainers-modules = "0.13"

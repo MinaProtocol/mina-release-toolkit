@@ -1,4 +1,5 @@
-use clap::Args;
+use clap::{Args, Subcommand};
+use std::path::PathBuf;
 
 pub const DEFAULT_ARTIFACTS: &str = "mina-logproc,mina-archive,mina-rosetta,mina-daemon";
 pub const DEFAULT_NETWORKS: &str = "devnet,mainnet";
@@ -445,4 +446,57 @@ pub struct PublishArgs {
     /// S3-compatible servers, not by AWS
     #[arg(long)]
     pub s3_force_path_style: bool,
+}
+
+/// `release-manager docker ...`
+#[derive(Subcommand)]
+pub enum DockerCommand {
+    /// Copy one image reference to one or more target references
+    Promote(DockerPromoteArgs),
+    /// Run a package's check script inside an image
+    Verify(DockerVerifyArgs),
+}
+
+#[derive(Args)]
+pub struct DockerPromoteArgs {
+    /// Full source reference: <registry>/<name>:<tag>
+    #[arg(long)]
+    pub source: String,
+
+    /// Full target reference; repeat to push several tags or registries
+    #[arg(long = "target", required = true)]
+    pub targets: Vec<String>,
+
+    /// Platform to pull: amd64 or arm64
+    #[arg(long, default_value = DEFAULT_ARCHITECTURES)]
+    pub arch: String,
+
+    /// Print what would be promoted, pull and push nothing
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+#[derive(Args)]
+pub struct DockerVerifyArgs {
+    /// Full image reference <registry>/<name>:<tag>, or with --no-pull a
+    /// local image ID (sha256:<hex>)
+    #[arg(long)]
+    pub image: String,
+
+    /// Package name passed to resolve-check-script.sh (e.g. mina-daemon)
+    #[arg(long)]
+    pub package: String,
+
+    /// Directory with resolve-check-script.sh and the check scripts
+    /// (mina's scripts/verify), mounted read-only into the container
+    #[arg(long)]
+    pub check_scripts_dir: PathBuf,
+
+    /// Platform to run: amd64 or arm64
+    #[arg(long, default_value = DEFAULT_ARCHITECTURES)]
+    pub arch: String,
+
+    /// Check the image already in the local daemon instead of pulling it
+    #[arg(long)]
+    pub no_pull: bool,
 }

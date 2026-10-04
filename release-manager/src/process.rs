@@ -179,6 +179,40 @@ impl MockCommandExecutor {
     }
 }
 
+/// Start MinIO for an integration test; returns the container (dropping it
+/// stops MinIO) and its S3 endpoint. Credentials are `minioadmin`/`minioadmin`.
+///
+/// MinIO's own images on Docker Hub and quay.io now require a login.
+/// Chainguard's build is anonymous, but only `latest` is free, so the tag
+/// cannot be pinned. It declares no port, so the port, command and
+/// credentials are given here rather than through testcontainers' MinIO module.
+#[cfg(all(test, feature = "integration-test"))]
+pub async fn start_minio() -> (
+    testcontainers_modules::testcontainers::ContainerAsync<
+        testcontainers_modules::testcontainers::GenericImage,
+    >,
+    String,
+) {
+    use testcontainers_modules::testcontainers::core::{IntoContainerPort, WaitFor};
+    use testcontainers_modules::testcontainers::runners::AsyncRunner;
+    use testcontainers_modules::testcontainers::{GenericImage, ImageExt};
+
+    let container = GenericImage::new("cgr.dev/chainguard/minio", "latest")
+        .with_exposed_port(9000.tcp())
+        .with_wait_for(WaitFor::message_on_stderr("API:"))
+        .with_env_var("MINIO_ROOT_USER", "minioadmin")
+        .with_env_var("MINIO_ROOT_PASSWORD", "minioadmin")
+        .with_cmd(["server", "/data"])
+        .start()
+        .await
+        .expect("minio container start");
+    let port = container
+        .get_host_port_ipv4(9000)
+        .await
+        .expect("minio port");
+    (container, format!("http://127.0.0.1:{}", port))
+}
+
 /// Executor that runs some programs for real and mocks the rest. Useful for
 /// integration tests that want a real `deb-s3` against a MinIO container but
 /// don't want to depend on `dig`, `aws cloudfront`, etc.

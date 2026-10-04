@@ -336,6 +336,30 @@ release-manager verify \
 **Required options:**
 - `--version`: Version to verify
 
+#### Docker
+
+Copy and verify fully-named image references. The caller computes every
+tag; this command does not derive tags from artifact, network or profile.
+
+```bash
+# Pull once, then tag and push as each --target
+release-manager docker promote \
+  --source europe-west3-docker.pkg.dev/o1labs-192920/euro-docker-repo/mina-daemon:4.0.1-bookworm-devnet \
+  --target docker.io/minaprotocol/mina-daemon:4.0.1-bookworm-devnet \
+  --arch amd64
+
+# Run the package's check script inside the image. The directory must hold
+# resolve-check-script.sh (mina's scripts/verify); it is mounted read-only.
+release-manager docker verify \
+  --image docker.io/minaprotocol/mina-daemon:4.0.1-bookworm-devnet \
+  --package mina-daemon \
+  --check-scripts-dir ./scripts/verify \
+  [--no-pull]
+```
+
+`--no-pull` checks the image already in the local daemon; `--image` may then
+also be a local image ID (`sha256:<hex>`), which another job cannot re-point.
+
 #### Fix
 
 Repair Debian repository manifests.
