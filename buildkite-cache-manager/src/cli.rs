@@ -20,12 +20,16 @@ pub struct Cli {
 pub enum Commands {
     /// Read (copy) file(s) from the CI cache to a local destination
     Read {
-        /// Override existing cached files
+        /// Keep existing local files instead of overwriting them
         #[arg(short, long)]
+        no_clobber: bool,
+
+        /// Deprecated no-op: overwriting is the default
+        #[arg(short, long, hide = true)]
         r#override: bool,
 
-        /// Override cache root folder (default: BUILDKITE_BUILD_ID).
-        /// Do not add leading/trailing slashes.
+        /// Override cache root folder (default: MINA_READ_CACHE_ROOT, then
+        /// BUILDKITE_BUILD_ID). Do not add leading/trailing slashes.
         #[arg(short, long)]
         root: Option<String>,
 
@@ -47,8 +51,12 @@ pub enum Commands {
 
     /// Write (copy) local file(s) to the CI cache
     Write {
-        /// Override existing files in cache
+        /// Keep existing cache files instead of overwriting them
         #[arg(short, long)]
+        no_clobber: bool,
+
+        /// Deprecated no-op: overwriting is the default
+        #[arg(short, long, hide = true)]
         r#override: bool,
 
         /// Override cache root folder (default: BUILDKITE_BUILD_ID).

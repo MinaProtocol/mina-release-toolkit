@@ -31,7 +31,7 @@ Copy cached artifacts from Hetzner storage to a local path. Requires `BUILDKITE_
 ```bash
 buildkite-cache-manager read debians/mina-devnet*.deb /workdir
 buildkite-cache-manager read --root custom-root artifacts/build.tar.gz /output
-buildkite-cache-manager read --override --skip-dirs-create file.txt /existing-dir
+buildkite-cache-manager read --no-clobber --skip-dirs-create file.txt /existing-dir
 ```
 
 ### write
@@ -42,12 +42,29 @@ final argument — matching the bash `write-to-dir INPUT... OUTPUT_DIR`.
 
 ```bash
 buildkite-cache-manager write mina-devnet*.deb debians/
-buildkite-cache-manager write --override build.tar.gz artifacts/
+buildkite-cache-manager write --no-clobber build.tar.gz artifacts/
 buildkite-cache-manager write --root custom-root file.txt uploads/
 
 # Multiple inputs into one destination directory
 buildkite-cache-manager write hashes.json new_config.json hardfork/
 ```
+
+### Semantics shared with the bash `manager.sh`
+
+`read` and `write` behave like `cp -R -f`, so the tool is a drop-in
+replacement for `buildkite/scripts/cache/manager.sh read|write-to-dir`:
+
+- Existing files are overwritten. `--no-clobber` refuses instead.
+  `--override` is accepted as a deprecated no-op.
+- A directory copied into an existing directory keeps its name:
+  `read hardfork /workdir` gives `/workdir/hardfork/...`.
+- Globs follow the shell: `*` does not match a leading dot.
+- Each file is copied to a temporary sibling and renamed into place, so a
+  reader never sees a partial file.
+- `read` takes its root from `--root`, then `MINA_READ_CACHE_ROOT`, then
+  `BUILDKITE_BUILD_ID`. `write` ignores `MINA_READ_CACHE_ROOT`.
+- Exit code 1: `BUILDKITE_BUILD_ID` is not set. Exit code 2: a copy failed
+  (CI retries a step on exit status 2).
 
 ### list
 
