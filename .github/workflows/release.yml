@@ -129,7 +129,7 @@ jobs:
           # The binaries must run on this arch with no loader.
           dpkg-deb -x "${DEB}" ./x
           ./x/usr/bin/buildkite-cache-manager --version
-          file ./x/usr/bin/buildkite-cache-manager | grep -q "statically linked"
+          file ./x/usr/bin/buildkite-cache-manager | grep -qE "static(ally|-pie) linked"
 
       - uses: actions/upload-artifact@v4
         with:

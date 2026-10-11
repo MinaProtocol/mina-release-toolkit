@@ -62,6 +62,9 @@ fi
 # build dir becomes its installed path inside the package.
 STAGING="$(mktemp -d)"
 trap 'rm -rf "${STAGING}"' EXIT
+# mktemp -d is 0700; it becomes the package's `./`, which dpkg-deb -x
+# applies to the extraction directory.
+chmod 0755 "${STAGING}"
 
 install -D -m 0755 "$(bin_path release-manager release-manager)"                 "${STAGING}/usr/bin/release-manager"
 install -D -m 0755 "$(bin_path mina-bench-upload mina-bench-upload)"             "${STAGING}/usr/bin/mina-bench-upload"
