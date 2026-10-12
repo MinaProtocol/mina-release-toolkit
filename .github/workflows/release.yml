@@ -1,6 +1,6 @@
 name: Release
 
-# Fires on `vX.Y.Z` tag push. Builds the .deb fresh from the tagged
+# Fires on `vX.Y.Z` tag push. Builds amd64 and arm64 .debs from the tagged
 # commit, creates a GitHub Release with auto-generated notes,
 # attaches the .deb, and references the matching Docker image on
 # GHCR (which the `Package` workflow publishes in parallel for the
@@ -16,6 +16,12 @@ on:
   push:
     tags:
       - 'v*'
+  # Build both arches on PRs that change the release build, so a broken
+  # matrix shows up before a tag is pushed. Publishing stays tag-only.
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - 'packaging/**'
 
 env:
   CARGO_TERM_COLOR: always
@@ -29,11 +35,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  release:
-    name: Build .deb and publish GitHub Release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write   # required to create the Release and upload assets
+  build:
+    name: Build .deb (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          # Native arm64 runner: musl cross-linking for aarch64 needs a
+          # cross gcc the x86 runner does not ship.
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,11 +58,11 @@ jobs:
 
       - name: Install Rust + musl target
         # Static-linking against musl removes the glibc floor entirely:
-        # one binary that runs on any Linux x86_64. The four crates
+        # one binary that runs on any Linux of that arch. The four crates
         # already use rustls (no OpenSSL link), so musl Just Works.
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-unknown-linux-musl
+          targets: ${{ matrix.target }}
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -59,7 +75,7 @@ jobs:
           # Cache key includes the target triple so the musl build's
           # cache doesn't collide with the default-host build cache
           # used elsewhere.
-          key: release-musl-${{ github.ref_name }}
+          key: release-musl-${{ matrix.target }}-${{ github.ref_name }}
 
       - name: Install Debian + musl build tools
         run: |
@@ -73,17 +89,22 @@ jobs:
         # want `mina-release-toolkit_1.2.3_amd64.deb`, not
         # `…_v1.2.3_…`. `${ref_name#v}` does the trim.
         id: ver
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == tag ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "version=0.0.0~pr${{ github.event.number }}" >> "${GITHUB_OUTPUT}"
+          fi
 
       - name: Build the four release binaries (musl static)
-        # `--target x86_64-unknown-linux-musl` produces fully static
-        # binaries — no glibc dependency, so a single .deb is
-        # installable on bullseye / focal / jammy / noble / bookworm
-        # alike. The lock-file policy is the same as package.yml:
-        # in-tree crates use --locked, the deb-toolkit submodule
-        # gitignores its lockfile upstream so we let cargo resolve.
+        # Fully static binaries — no glibc dependency, so a single .deb
+        # per arch is installable on bullseye / focal / jammy / noble /
+        # bookworm alike. The lock-file policy is the same as
+        # package.yml: in-tree crates use --locked, the deb-toolkit
+        # submodule gitignores its lockfile upstream so we let cargo
+        # resolve.
         env:
-          TARGET: x86_64-unknown-linux-musl
+          TARGET: ${{ matrix.target }}
         run: |
           (cd release-manager         && cargo build --release --locked --target "$TARGET")
           (cd mina-bench-upload       && cargo build --release --locked --target "$TARGET")
@@ -94,16 +115,48 @@ jobs:
         # build-deb.sh respects CARGO_TARGET to look in
         # `target/<triple>/release/` instead of `target/release/`.
         env:
-          CARGO_TARGET: x86_64-unknown-linux-musl
+          CARGO_TARGET: ${{ matrix.target }}
+          ARCH: ${{ matrix.arch }}
         run: packaging/build-deb.sh "${{ steps.ver.outputs.version }}" ./out
 
       - name: Sanity-check the produced .deb
         run: |
           set -euo pipefail
-          DEB="./out/mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb"
+          DEB="./out/mina-release-toolkit_${{ steps.ver.outputs.version }}_${{ matrix.arch }}.deb"
           test -f "${DEB}"
           dpkg-deb --info "${DEB}"
           dpkg-deb -c    "${DEB}" | head -20
+          # The binaries must run on this arch with no loader.
+          dpkg-deb -x "${DEB}" ./x
+          ./x/usr/bin/buildkite-cache-manager --version
+          file ./x/usr/bin/buildkite-cache-manager | grep -qE "static(ally|-pie) linked"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.arch }}
+          path: out/mina-release-toolkit_${{ steps.ver.outputs.version }}_${{ matrix.arch }}.deb
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # required to create the Release and upload assets
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Strip leading `v` from tag for the Debian version string
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: deb-*
+          path: out
+          merge-multiple: true
 
       - name: Compose release body
         # Small extra context appended to the auto-generated notes:
@@ -114,7 +167,7 @@ jobs:
           cat > release_extra.md <<EOF
           ## Artifacts
 
-          - **Debian package** (attached to this release as \`mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb\`)
+          - **Debian packages** (attached to this release): \`mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb\`, \`mina-release-toolkit_${{ steps.ver.outputs.version }}_arm64.deb\`
           - **Docker image**: \`ghcr.io/${IMAGE_NAME}:${{ steps.ver.outputs.version }}\` — also tagged \`${{ steps.ver.outputs.version }}\`, the major/minor floor, and \`latest\`. See the [Package workflow](https://github.com/${{ github.repository }}/actions/workflows/package.yml) for the build that produced it.
 
           ## Install
@@ -131,7 +184,7 @@ jobs:
           sudo apt-get update && sudo apt-get install mina-release-toolkit
 
           # Debian, by downloading the .deb from this release's Assets:
-          sudo apt install ./mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb
+          sudo apt install ./mina-release-toolkit_${{ steps.ver.outputs.version }}_\$(dpkg --print-architecture).deb
 
           # Docker:
           docker pull ghcr.io/${IMAGE_NAME}:${{ steps.ver.outputs.version }}
@@ -144,7 +197,9 @@ jobs:
           # Auto-generated commit-summary notes; our `body` is appended.
           generate_release_notes: true
           body_path: release_extra.md
-          files: out/mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb
+          files: |
+            out/mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb
+            out/mina-release-toolkit_${{ steps.ver.outputs.version }}_arm64.deb
           fail_on_unmatched_files: true
 
       # ------- Publish to packages.o1test.net APT repo --------------------
@@ -181,14 +236,17 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
           set -euo pipefail
-          DEB="./out/mina-release-toolkit_${{ steps.ver.outputs.version }}_amd64.deb"
-          for codename in bullseye focal jammy noble bookworm; do
-              echo "=== uploading to ${codename}/stable ==="
-              deb-s3 upload \
-                  --bucket=packages.o1test.net \
-                  --s3-region=us-west-2 \
-                  --codename="${codename}" \
-                  --component=stable \
-                  --preserve-versions \
-                  "${DEB}"
+          for arch in amd64 arm64; do
+              DEB="./out/mina-release-toolkit_${{ steps.ver.outputs.version }}_${arch}.deb"
+              for codename in bullseye focal jammy noble bookworm; do
+                  echo "=== uploading ${arch} to ${codename}/stable ==="
+                  deb-s3 upload \
+                      --bucket=packages.o1test.net \
+                      --s3-region=us-west-2 \
+                      --codename="${codename}" \
+                      --component=stable \
+                      --arch="${arch}" \
+                      --preserve-versions \
+                      "${DEB}"
+              done
           done
