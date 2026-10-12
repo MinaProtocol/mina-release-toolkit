@@ -1,12 +1,28 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Parser;
 
 use buildkite_cache_manager::cache::FsBackend;
 use buildkite_cache_manager::cli::{Cli, Commands};
 use buildkite_cache_manager::commands;
 
-fn main() -> Result<()> {
+/// Exit code for a failed copy. Matches the bash manager.sh, so the CI retry
+/// rule on exit status 2 keeps firing.
+const EXIT_COPY_FAILED: i32 = 2;
+
+fn main() {
     let cli = Cli::parse();
+    if let Err(e) = run(cli) {
+        eprintln!("Error: {e:?}");
+        let code = if e.is::<MissingBuildId>() {
+            1
+        } else {
+            EXIT_COPY_FAILED
+        };
+        std::process::exit(code);
+    }
+}
+
+fn run(cli: Cli) -> Result<()> {
     let backend = FsBackend;
     let cache_base =
         std::env::var("CACHE_BASE_URL").unwrap_or_else(|_| "/var/storagebox".to_string());
@@ -14,29 +30,36 @@ fn main() -> Result<()> {
 
     match &cli.command {
         Commands::Read {
-            r#override,
+            no_clobber,
             root,
             skip_dirs_create,
             input,
             destination: out_path,
+            ..
         } => {
             let build_id = get_build_id()?;
-            let root = root.as_deref().unwrap_or(&build_id);
+            // MINA_READ_CACHE_ROOT points reads at another build's root (set by
+            // run-selection --from). Writes never honour it.
+            let root = root
+                .clone()
+                .or_else(|| std::env::var("MINA_READ_CACHE_ROOT").ok())
+                .unwrap_or(build_id);
             commands::read::execute(
                 &backend,
                 &cache_base,
-                root,
+                &root,
                 input,
                 out_path,
-                *r#override,
+                !*no_clobber,
                 *skip_dirs_create,
                 output,
             )
         }
         Commands::Write {
-            r#override,
+            no_clobber,
             root,
             paths,
+            ..
         } => {
             let build_id = get_build_id()?;
             let root = root.as_deref().unwrap_or(&build_id);
@@ -48,7 +71,7 @@ fn main() -> Result<()> {
                 root,
                 inputs,
                 dest,
-                *r#override,
+                !*no_clobber,
                 output,
             )
         }
@@ -82,7 +105,10 @@ fn main() -> Result<()> {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("BUILDKITE_BUILD_ID must be set. This tool requires a Buildkite context.")]
+struct MissingBuildId;
+
 fn get_build_id() -> Result<String> {
-    std::env::var("BUILDKITE_BUILD_ID")
-        .context("BUILDKITE_BUILD_ID must be set. This tool requires a Buildkite context.")
+    std::env::var("BUILDKITE_BUILD_ID").map_err(|_| MissingBuildId.into())
 }
