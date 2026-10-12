@@ -124,14 +124,17 @@ fn parse_num(s: &str) -> Result<f64> {
 /// "Time can be expressed only in us or ns".
 fn parse_time_us(cell: &str) -> Result<f64> {
     let s = cell.trim();
-    if let Some(stripped) = s.strip_suffix("us") {
+    if let Some(stripped) = s.strip_suffix("ns") {
+        Ok(parse_num(stripped)? / 1_000.0)
+    } else if let Some(stripped) = s.strip_suffix("us") {
         parse_num(stripped)
-    } else if let Some(stripped) = s.strip_suffix("ns") {
-        let ns: f64 = parse_num(stripped)?;
-        Ok(ns / 1_000.0)
+    } else if let Some(stripped) = s.strip_suffix("ms") {
+        Ok(parse_num(stripped)? * 1_000.0)
+    } else if let Some(stripped) = s.strip_suffix('s') {
+        Ok(parse_num(stripped)? * 1_000_000.0)
     } else {
         Err(anyhow!(
-            "Time can be expressed only in us or ns, got {:?}",
+            "Time must end in 'ns', 'us', 'ms' or 's', got {:?}",
             s
         ))
     }
@@ -145,20 +148,36 @@ fn parse_cycles_kc(cell: &str) -> Result<f64> {
     let s = cell.trim();
     if let Some(stripped) = s.strip_suffix("kc") {
         parse_num(stripped)
+    } else if let Some(stripped) = s.strip_suffix("Mc") {
+        Ok(parse_num(stripped)? * 1_000.0)
+    } else if let Some(stripped) = s.strip_suffix("Gc") {
+        Ok(parse_num(stripped)? * 1_000_000.0)
     } else if let Some(stripped) = s.strip_suffix('c') {
         parse_num(stripped)
     } else {
-        Err(anyhow!("Cycles cell must end in 'kc' or 'c', got {:?}", s))
+        Err(anyhow!(
+            "Cycles cell must end in 'c', 'kc', 'Mc' or 'Gc', got {:?}",
+            s
+        ))
     }
 }
 
-/// `1.00w` → `1.0`. Strip the trailing `w` unit marker.
+/// `1.00w` → `1.0`. `1.50kw` → `1500.0`. core_bench switches a column
+/// to `kw`/`Mw`/`Gw` when every row in its table is that large.
 fn parse_words(cell: &str) -> Result<f64> {
     let s = cell.trim();
     let stripped = s
         .strip_suffix('w')
         .ok_or_else(|| anyhow!("Word cell must end in 'w', got {:?}", s))?;
-    parse_num(stripped)
+    if let Some(n) = stripped.strip_suffix('k') {
+        Ok(parse_num(n)? * 1e3)
+    } else if let Some(n) = stripped.strip_suffix('M') {
+        Ok(parse_num(n)? * 1e6)
+    } else if let Some(n) = stripped.strip_suffix('G') {
+        Ok(parse_num(n)? * 1e9)
+    } else {
+        parse_num(stripped)
+    }
 }
 
 #[cfg(test)]
@@ -200,6 +219,25 @@ mod tests {
             .unwrap()
             .as_f64();
         assert!((mw - 2_792_201.98).abs() < 1e-6, "minor words was {mw}");
+    }
+
+    #[test]
+    fn parses_mega_cycles_and_larger_units() {
+        // core_bench picks one unit per column per table, from the
+        // table's smallest row; `vrf eval unchecked` sits near 1M cycles
+        // so the vrf table flips between `kc` and `Mc` across agents.
+        let input = "│ Name │ Time/Run │ Cycls/Run │ mWd/Run │ mjWd/Run │ Prom/Run │\n\
+                     │ [vrf] vrf eval unchecked │ 524.85us │ 1.05Mc │ 613.97w │ 0.13w │ 0.13w │\n\
+                     │ [x] slow │ 1.50ms │ 2.00Gc │ 1.50kw │ 2.00Mw │ 0.00w │\n";
+        let p = JaneStreetParser::mina_base();
+        let records = p.parse(input, "develop").unwrap();
+        assert_eq!(records.len(), 2);
+        let f = |i: usize, k: &str| records[i].fields.get(k).unwrap().as_f64();
+        assert!((f(0, F_CYCLES_PER_RUN) - 1_050.0).abs() < 1e-6);
+        assert!((f(1, F_TIME_PER_RUN) - 1_500.0).abs() < 1e-6);
+        assert!((f(1, F_CYCLES_PER_RUN) - 2_000_000.0).abs() < 1e-6);
+        assert!((f(1, F_MINOR_WORDS_PER_RUN) - 1_500.0).abs() < 1e-6);
+        assert!((f(1, F_MAJOR_WORDS_PER_RUN) - 2_000_000.0).abs() < 1e-6);
     }
 
     #[test]
