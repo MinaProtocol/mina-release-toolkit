@@ -46,7 +46,7 @@ is complete.
 
 ## GitHub Actions
 
-`.github/workflows/verify-artifacts.yml` runs every night at **02:17 UTC**, can be
+`.github/workflows/verify-artifacts.yml` runs every Sunday at **02:17 UTC**, can be
 started manually, and runs on PRs or main-branch changes to these scripts or the
 workflow. Scheduled runs begin once the workflow is merged into `main`.
 

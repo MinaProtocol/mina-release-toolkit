@@ -2,7 +2,7 @@
 
 # Shared runner for the published-artifact and infrastructure checks.
 #
-# Nightly GitHub Actions jobs select a check with VERIFY_MODE:
+# Weekly GitHub Actions jobs select a check with VERIFY_MODE:
 #
 #   infra      Cheap canary. Is the apt repository serving and does the docker
 #              registry answer? No credentials, no downloads.
@@ -10,7 +10,7 @@
 #   artifacts  Full test. Installs every listed package in a clean container of
 #              each codename, pulls every listed docker image, and runs the
 #              automode metapackage install with no version pin. Downloads a few
-#              gigabytes. Both modes run nightly.
+#              gigabytes. Both modes run weekly.
 #
 # Every input is an environment variable so a scheduled workflow can set
 # them without changing the pipeline definition.
@@ -48,7 +48,7 @@
 #
 # With none of PACKAGES, IMAGES or AUTOMODE set, artifacts mode falls back to a
 # default set covering devnet (alpha) and mainnet (stable), so an unconfigured
-# nightly schedule still tests both networks.
+# weekly schedule still tests both networks.
 
 set -eo pipefail
 
