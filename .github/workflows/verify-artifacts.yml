@@ -1,0 +1,93 @@
+name: Published artifact and infrastructure verification
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tests/infra/**'
+      - '.github/workflows/verify-artifacts.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tests/infra/**'
+      - '.github/workflows/verify-artifacts.yml'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: verify-artifacts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate verification scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shell syntax and lint
+        run: |
+          for script in tests/infra/*.sh; do
+            bash -n "$script"
+          done
+          shellcheck -S warning tests/infra/*.sh
+
+  infrastructure:
+    name: Package repository and registry infrastructure
+    runs-on: ubuntu-24.04
+    needs: validate
+    timeout-minutes: 20
+    env:
+      VERIFY_MODE: infra
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check apt indexes and Docker registry
+        run: |
+          mkdir -p verification-results
+          ./tests/infra/run-verification.sh 2>&1 | tee verification-results/infrastructure.log
+      - name: Upload infrastructure report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-infrastructure
+          path: verification-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+  artifacts:
+    name: Published packages (${{ matrix.codename }})
+    runs-on: ubuntu-24.04
+    needs: validate
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        codename: [noble, bookworm, jammy]
+    env:
+      VERIFY_MODE: artifacts
+      CODENAMES: ${{ matrix.codename }}
+      JOBS: '2'
+      OUTPUT_DIR: ${{ github.workspace }}/verification-results
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Docker availability
+        run: docker info
+      - name: Install and check published packages and automode runtimes
+        run: |
+          mkdir -p "$OUTPUT_DIR"
+          ./tests/infra/run-verification.sh 2>&1 | tee "$OUTPUT_DIR/verification.log"
+      - name: Upload package results and container logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-artifacts-${{ matrix.codename }}
+          path: verification-results/
+          if-no-files-found: warn
+          retention-days: 14

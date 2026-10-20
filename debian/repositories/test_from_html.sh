@@ -333,7 +333,7 @@ usage() {
     echo ""
     echo "Options:"
     echo "  --html <file>           HTML file to test"
-    echo "  --distribution <dist>   Docker distribution to test with (default: ubuntu:focal)"
+    echo "  --distribution <dist>   Docker distribution to test with (default: ubuntu:noble)"
     echo "  --docker               Run actual Docker test (default: false)"
     echo ""
     echo "Examples:"

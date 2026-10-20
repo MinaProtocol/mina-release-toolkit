@@ -23,9 +23,9 @@ jobs:
           - nightly_packages_page.html
           - unstable_packages_page.html
         distro:
-          - ubuntu:focal
-          - ubuntu:24.04
-          - debian:bullseye
+          - ubuntu:noble
+          - ubuntu:jammy
+          - debian:bookworm
       fail-fast: false
 
     steps:
