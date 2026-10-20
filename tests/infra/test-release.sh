@@ -229,11 +229,23 @@ function image_network() {
 # the container was gone.
 function dependency_reason() {
   local log="$1" line
-  line=$(grep -A8 "unmet dependencies" "$log" | grep -m1 "Depends:" | sed 's/^ *//')
+  line=$(grep -A8 "unmet dependencies" "$log" | grep -m1 "Depends:" | sed 's/^ *//' || true)
   if [[ -z "$line" ]]; then
-    line=$(grep -m1 "^E: " "$log" | sed 's/^ *//')
+    line=$(grep -m1 "^E: " "$log" | sed 's/^ *//' || true)
   fi
   echo "${line:-see the job log}"
+}
+
+# Installation can fail before the checker runs (for example an APT size/hash
+# mismatch), so an absent CHECK-FAIL line must fall back to the installer error.
+function failure_reason() {
+  local log="$1" line
+  line=$(grep -m1 '^CHECK-FAIL:' "$log" | cut -c13- || true)
+  if [[ -n "$line" ]]; then
+    echo "$line"
+  else
+    dependency_reason "$log"
+  fi
 }
 
 function record() {
@@ -580,7 +592,7 @@ function run_docker_case() {
       > "$log" 2>&1; then
     record "PASS" "docker" "$cn" "$target" "kind=$kind"
   else
-    record "FAIL" "docker" "$cn" "$target" "$(grep -m1 'CHECK-FAIL' "$log" | cut -c13- || echo "see $(basename "$log")")"
+    record "FAIL" "docker" "$cn" "$target" "$(failure_reason "$log")"
   fi
 }
 
@@ -610,12 +622,12 @@ function run_automode_case() {
     if grep -q "unmet dependencies" "$log"; then
       record "FAIL" "automode" "$cn" "$target" "unpinned install failed: $(dependency_reason "$log")"
     else
-      record "FAIL" "automode" "$cn" "$target" "$(grep -m1 'CHECK-FAIL' "$log" | cut -c13- || echo "see $(basename "$log")")"
+      record "FAIL" "automode" "$cn" "$target" "$(failure_reason "$log")"
     fi
   fi
 }
 
-export -f run_deb_case run_docker_case run_automode_case base_image package_kind extra_deps record dependency_reason
+export -f run_deb_case run_docker_case run_automode_case base_image package_kind extra_deps record dependency_reason failure_reason
 export OUTDIR RESULTS SETUP CHECKER REPO CHANNEL ARCH SIGNED DOCKER_REPO DOCKER_SUFFIX
 
 # ---------------------------------------------------------------------------

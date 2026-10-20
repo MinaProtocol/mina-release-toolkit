@@ -60,6 +60,16 @@ GitHub schedules can be delayed. For public repositories, scheduled workflows
 are disabled after 60 days without repository activity. This is periodic release
 verification, rather than an availability alerting service.
 
+## Validation
+
+```bash
+python3 tests/infra/test_verification.py
+shellcheck -S warning tests/infra/*.sh
+```
+
+The regression tests mock network and Docker calls. They cover large Release
+responses, wrong codenames, default coverage, and actionable APT failure reports.
+
 ## Origin
 
 Ported from MinaProtocol/mina's `dkijania/artifact-verification-tooling` branch

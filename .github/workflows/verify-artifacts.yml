@@ -38,6 +38,8 @@ jobs:
             bash -n "$script"
           done
           shellcheck -S warning tests/infra/*.sh
+      - name: Run verification regression tests
+        run: python3 tests/infra/test_verification.py
 
   infrastructure:
     name: Package repository and registry infrastructure

@@ -101,7 +101,9 @@ for repo in "${REPO_LIST[@]}"; do
 
     # A Release file that does not name its own codename means the repository was
     # rebuilt against the wrong suite, which breaks apt in a way that is hard to see.
-    if curl -sSL --max-time "$TIMEOUT" "$release_url" 2>/dev/null | grep -qE "^(Codename|Suite): *${codename}\b"; then
+    # Consume the complete response: grep -q can close the pipe early, making
+    # curl fail with SIGPIPE and pipefail turn a matching Release into a failure.
+    if curl -sSL --max-time "$TIMEOUT" "$release_url" 2>/dev/null | grep -E "^(Codename|Suite): *${codename}\b" > /dev/null; then
       report "OK" "${repo} ${codename} Release" "signed index present"
     else
       report "FAIL" "${repo} ${codename} Release" "does not declare codename ${codename}"
