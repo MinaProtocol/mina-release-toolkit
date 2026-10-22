@@ -46,15 +46,6 @@ jobs:
       - name: Test stable repository page
         run: make test-stable
         
-      - name: Test nightly repository page
-        run: make test-nightly
-        
-      - name: Test unstable repository page
-        run: make test-unstable
-        
-      - name: Run all tests together
-        run: make test
-        
       - name: Validate HTML syntax with html-validate
         run: |
           echo "Validating HTML syntax..."

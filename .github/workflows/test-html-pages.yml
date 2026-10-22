@@ -18,20 +18,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        # Only stable is in use; the nightly and unstable repositories are not published to.
         html_file:
           - stable_packages_page.html
-          - nightly_packages_page.html
-          - unstable_packages_page.html
         distro:
           - ubuntu:noble
           - ubuntu:jammy
           - debian:bookworm
-        # Not served by the repository: nightly has no jammy, preflight has no bookworm.
-        exclude:
-          - html_file: nightly_packages_page.html
-            distro: ubuntu:jammy
-          - html_file: unstable_packages_page.html
-            distro: debian:bookworm
       fail-fast: false
 
     steps:
