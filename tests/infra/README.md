@@ -16,7 +16,7 @@ package/image checks. These tools are available on GitHub-hosted Ubuntu runners.
 # Check non-empty apt indexes and Docker repository availability.
 ./tests/infra/run-verification.sh
 
-# Install current packages and automode metapackages for both networks.
+# Install current packages for both networks.
 VERIFY_MODE=artifacts ./tests/infra/run-verification.sh
 
 # Test one distribution, with fewer concurrent containers.
@@ -25,6 +25,10 @@ VERIFY_MODE=artifacts CODENAMES=noble JOBS=2 ./tests/infra/run-verification.sh
 # Override the default package set; versions and per-package channels are optional.
 VERIFY_MODE=artifacts \
 PACKAGES=mina-devnet,mina-mainnet@stable \
+./tests/infra/run-verification.sh
+
+# Around a hard fork, also install the automode metapackages unpinned.
+VERIFY_MODE=artifacts \
 AUTOMODE=mina-devnet-automode,mina-mainnet-automode@stable \
 ./tests/infra/run-verification.sh
 ```
@@ -34,8 +38,8 @@ AUTOMODE=mina-devnet-automode,mina-mainnet-automode@stable \
 
 Docker images require an explicit version in `IMAGES`; there is no implicit
 Docker tag that resolves to the current Debian channel. Image checks are
-therefore opt-in. The default artifact set tests Debian packages and unpinned
-automode metapackages, including both pre-fork and post-fork runtimes.
+therefore opt-in. Automode checks are opt-in too: automode only bridges a node
+across a hard fork, so the default artifact set tests the Debian packages alone.
 
 Artifact results are written to `verification-results/results.tsv`, with
 per-container logs below `verification-results/logs/`. `WARN` records known

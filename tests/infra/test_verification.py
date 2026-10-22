@@ -71,13 +71,12 @@ else:
         result = self.run_script("run-verification.sh")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         rows = self.results()
-        self.assertEqual(len(rows), 27)
+        self.assertEqual(len(rows), 21)
         self.assertEqual({row[2] for row in rows}, {"noble", "bookworm", "jammy"})
         self.assertTrue(all(row[0] == "PASS" for row in rows))
         targets = {row[3] for row in rows}
-        self.assertTrue({"mina-devnet@alpha", "mina-mainnet@stable",
-                         "mina-devnet-automode@alpha", "mina-mainnet-automode@stable"}
-                        .issubset(targets))
+        self.assertTrue({"mina-devnet@alpha", "mina-mainnet@stable"}.issubset(targets))
+        self.assertFalse(any("automode" in target for target in targets))
 
     def test_automode_reports_apt_download_error(self):
         self.executable("docker", """#!/bin/bash

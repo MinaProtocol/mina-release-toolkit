@@ -8,9 +8,9 @@
 #              registry answer? No credentials, no downloads.
 #
 #   artifacts  Full test. Installs every listed package in a clean container of
-#              each codename, pulls every listed docker image, and runs the
-#              automode metapackage install with no version pin. Downloads a few
-#              gigabytes. Both modes run weekly.
+#              each codename, pulls every listed docker image, and, when AUTOMODE
+#              is set, runs the automode metapackage install with no version pin.
+#              Downloads a few gigabytes. Both modes run weekly.
 #
 # Every input is an environment variable so a scheduled workflow can set
 # them without changing the pipeline definition.
@@ -31,7 +31,7 @@
 #   DEBIAN_CHANNEL   default component            (default: alpha)
 #   PACKAGES         comma list of name[=version][@channel]   (optional)
 #   IMAGES           comma list of name=version[:network]     (optional)
-#   AUTOMODE         comma list of name[=version][@channel]   (optional)
+#   AUTOMODE         comma list of name[=version][@channel]   (optional, never defaulted)
 #
 # The two networks do not share a channel: devnet artifacts sit in alpha and
 # mainnet ones in stable. Per-entry @channel and :network let a single run cover
@@ -47,8 +47,8 @@
 #   JOBS             containers in parallel       (default: 4)
 #
 # With none of PACKAGES, IMAGES or AUTOMODE set, artifacts mode falls back to a
-# default set covering devnet (alpha) and mainnet (stable), so an unconfigured
-# weekly schedule still tests both networks.
+# default package set covering devnet (alpha) and mainnet (stable), so an
+# unconfigured weekly schedule still tests both networks.
 
 set -eo pipefail
 
@@ -95,24 +95,21 @@ case "$VERIFY_MODE" in
     # and nothing here goes stale after a release. Devnet artifacts live in alpha
     # and mainnet ones in stable, which is what the @stable entries are for.
     #
-    # The prefork and postfork runtimes are not listed separately: the automode
-    # metapackage pulls both in, and installing it unpinned is the case that
-    # catches a channel unable to satisfy its own pin. That is how the devnet
-    # release broke twice in August, and the mainnet one after it.
+    # Automode is not defaulted. It only bridges a node across a hard fork; once
+    # the fork has passed, new installs use the postfork package directly. Set
+    # AUTOMODE explicitly around a fork to check that a channel satisfies its own
+    # prefork/postfork pins.
     #
     # Docker images are not defaulted. A tag carries its version and has no
     # channel to resolve against, so a schedule wanting image coverage must name
     # the versions itself.
     DEFAULT_PACKAGES="mina-devnet,mina-archive-devnet,mina-rosetta-devnet,mina-logproc"
     DEFAULT_PACKAGES="${DEFAULT_PACKAGES},mina-mainnet@stable,mina-archive-mainnet@stable,mina-rosetta-mainnet@stable"
-    DEFAULT_AUTOMODE="mina-devnet-automode,mina-mainnet-automode@stable"
 
     if [[ -z "${PACKAGES:-}" && -z "${IMAGES:-}" && -z "${AUTOMODE:-}" ]]; then
       PACKAGES="$DEFAULT_PACKAGES"
-      AUTOMODE="$DEFAULT_AUTOMODE"
       echo "No PACKAGES, IMAGES or AUTOMODE given; using the default both-network set:"
       echo "  PACKAGES=$PACKAGES"
-      echo "  AUTOMODE=$AUTOMODE"
     fi
 
     ARGS=(

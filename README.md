@@ -27,7 +27,7 @@ own `README.md` is the detailed reference.
 | [`buildkite-cache-manager/`](buildkite-cache-manager/) | Rust | Read/write/list/prune Buildkite CI cache on Hetzner shared storage. | [README](buildkite-cache-manager/README.md) |
 | [`deb-s3/`](deb-s3/) (submodule) | Ruby | Manage APT repositories on S3 (upload, delete, verify, repair). Forked from `krobertson/deb-s3`. | [README](deb-s3/README.md) |
 | [`dhall-buildkite/`](dhall-buildkite/) (submodule) | Dhall | Type-safe, composable Buildkite pipeline configs. | [README](dhall-buildkite/README.md) |
-| [`tests/infra/`](tests/infra/) | Bash | Weekly checks of public APT indexes, Docker registry availability, and published package/automode installs. | [README](tests/infra/README.md) |
+| [`tests/infra/`](tests/infra/) | Bash | Weekly checks of public APT indexes, Docker registry availability, and published package installs. | [README](tests/infra/README.md) |
 | [`debian/`](debian/) | HTML + bash | Static welcome pages for the Debian repositories + a Docker-based test harness. | — |
 
 ## How the pieces fit
