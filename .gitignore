@@ -255,4 +255,4 @@ release-artifacts/
 # Local development
 local/
 dev/
-scratch/
+scratch/__pycache__/

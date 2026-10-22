@@ -20,7 +20,7 @@ jobs:
     strategy:
       matrix:
         repository: [stable, nightly, unstable]
-        distro: [ubuntu:20.04, ubuntu:22.04, debian:bullseye]
+        distro: [ubuntu:noble, ubuntu:jammy, debian:bookworm]
     
     steps:
     - name: Checkout repository
@@ -75,7 +75,7 @@ jobs:
     strategy:
       matrix:
         repository: [stable, nightly, unstable]
-        distro: [ubuntu:20.04, ubuntu:22.04, debian:bullseye]
+        distro: [ubuntu:noble, ubuntu:jammy, debian:bookworm]
     
     steps:
     - name: Checkout repository

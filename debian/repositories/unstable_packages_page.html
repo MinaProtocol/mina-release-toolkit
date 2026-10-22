@@ -828,17 +828,9 @@
                     </div>
                     <div class="card-content">
                         <ul class="list">
-                            <li>Ubuntu Focal (20.04 LTS)</li>
-                            <li>Ubuntu Jammy (22.04 LTS) <span class="version-note">**</span></li>
-                            <li>Ubuntu Noble (24.04 LTS) <span class="version-note">*</span></li>
-                            <li>Debian Bullseye (11)</li>
-                            <li>Debian Bookworm (12) <span class="version-note">*</span></li>
+                            <li>Ubuntu Jammy (22.04 LTS)</li>
+                            <li>Ubuntu Noble (24.04 LTS)</li>
                         </ul>
-                        <div class="version-annotation">
-                            <small><span class="version-note">*</span> Supported starting from Mina version 3.1.0 and newer</small>
-                            <br>
-                            <small><span class="version-note">**</span> Supported starting from Mina version 3.3.0-alpha1 and newer</small>
-                        </div>
                     </div>
                 </div>
 
@@ -1270,12 +1262,12 @@
                     <div class="step">
                         <h3><span class="step-number">3</span>Add Mina APT Repository</h3>
                         <p>Add the Mina testing APT repository:</p>
-                        <div class="code-block">echo "deb https://unstable.apt.packages.minaprotocol.com bullseye beta" > /etc/apt/sources.list.d/mina.list
-                            <button class="copy-button" onclick="copyToClipboard(&quot;echo \&quot;deb https://unstable.apt.packages.minaprotocol.com bullseye beta\&quot; > /etc/apt/sources.list.d/mina.list&quot;, this)">Copy</button>
+                        <div class="code-block" data-channel="preflight">echo "deb https://unstable.apt.packages.minaprotocol.com noble preflight" > /etc/apt/sources.list.d/mina.list
+                            <button class="copy-button" onclick="copyToClipboard(&quot;echo \&quot;deb https://unstable.apt.packages.minaprotocol.com noble preflight\&quot; > /etc/apt/sources.list.d/mina.list&quot;, this)">Copy</button>
                         </div>
 
                         <div class="warning">
-                            <strong>Distribution Codenames:</strong> Replace <code>bullseye</code> with your distribution codename.
+                            <strong>Distribution Codenames:</strong> Replace <code>noble</code> with your distribution codename.
                             <br><br>
                             <strong>Auto-detect your codename:</strong>
                             <div class="code-block" style="margin: 0.5rem 0;">lsb_release -c
@@ -1283,11 +1275,8 @@
                             </div>
                             <strong>Or use these common codenames:</strong>
                             <ul style="margin: 0.5rem 0 0 1.5rem;">
-                                <li><strong>Ubuntu 20.04:</strong> <code>focal</code></li>
                                 <li><strong>Ubuntu 22.04:</strong> <code>jammy</code></li>
                                 <li><strong>Ubuntu 24.04:</strong> <code>noble</code></li>
-                                <li><strong>Debian 11:</strong> <code>bullseye</code></li>
-                                <li><strong>Debian 12:</strong> <code>bookworm</code></li>
                             </ul>
                         </div>
                     </div>
@@ -1299,12 +1288,12 @@
                             <button class="copy-button" onclick="copyToClipboard('apt-get update', this)">Copy</button>
                         </div>
                         
-                        <div class="code-block">apt-get install -y mina-mainnet
-                            <button class="copy-button" onclick="copyToClipboard('apt-get install -y mina-mainnet', this)">Copy</button>
+                        <div class="code-block" data-channels="preflight">apt-get install -y mina-devnet
+                            <button class="copy-button" onclick="copyToClipboard('apt-get install -y mina-devnet', this)">Copy</button>
                         </div>
                         
                         <div class="warning">
-                            <strong>Package Selection:</strong> Replace <code>mina-mainnet</code> with the appropriate package name from the table above (e.g., <code>mina-devnet</code>, <code>mina-archive-mainnet</code>, <code>mina-rosetta-devnet</code>, etc.).
+                            <strong>Package Selection:</strong> Replace <code>mina-devnet</code> with the appropriate package name from the table above (e.g., <code>mina-archive-devnet</code>, <code>mina-rosetta-devnet</code>, etc.).
                             <br><br>
                             <strong>📋 Note:</strong> Beta packages are suitable for testing and staging environments. Alpha packages should only be used for development and research purposes.
                         </div>

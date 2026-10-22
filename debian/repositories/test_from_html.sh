@@ -200,51 +200,131 @@ validate_commands() {
     fi
 }
 
-# Function to test commands in Docker container
-test_commands_in_container() {
-    local distribution="$1"
-    local commands=("${@:2}")
-    
-    log_info "Testing commands in Docker container ($distribution)..."
-    
-    # Create a temporary script with all commands
-    local script_file
-    script_file=$(mktemp)
-    
-    # Add shebang and error handling
-    cat > "$script_file" << 'EOF'
-#!/bin/bash
-set -e
-export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y curl wget gnupg lsb-release apt-transport-https
-EOF
-    
-    # Add each command to the script
-    for cmd in "${commands[@]}"; do
-        echo "$cmd" >> "$script_file"
-    done
-    
-    # Add final verification
-    cat >> "$script_file" << 'EOF'
-echo "Installation completed successfully!"
-EOF
-    
-    chmod +x "$script_file"
-    
-    log_info "Created test script with ${#commands[@]} commands"
-    log_info "Running Docker container test..."
-    
-    # Run the script in Docker container
-    if docker run --platform linux/amd64 --rm -v "$script_file:/test_script.sh" "$distribution" /bin/bash -c "/test_script.sh"; then
-        log_success "✅ All commands executed successfully in $distribution container"
-        rm -f "$script_file"
-        return 0
-    else
-        log_error "❌ Command execution failed in $distribution container"
-        log_info "Test script saved at: $script_file (for debugging)"
+# Function to extract the install plan from the HTML file.
+#
+# The Docker test follows the page the way a reader does, so it needs to know
+# which commands belong to which channel. The page declares that with two
+# attributes on its code blocks:
+#   data-channel="<name>"         repository line for one channel
+#   data-channels="<a> <b> ..."   install command valid for those channels
+# Code blocks without either attribute that come before the first repository
+# line are common setup steps. Order and repeated commands (apt-get update) are
+# kept as written.
+extract_install_plan() {
+    local html_file="$1"
+
+    SETUP_COMMANDS=()
+    CHANNELS=()
+    declare -gA REPO_LINES=()
+    declare -gA INSTALL_COMMANDS=()
+
+    local kind value cmd seen_repo=false
+    while IFS=$'\x1f' read -r kind value cmd; do
+        cmd=$(echo "$cmd" | sed 's/&lt;/</g; s/&gt;/>/g; s/&amp;/\&/g; s/&quot;/"/g; s/^[[:space:]]*//; s/[[:space:]]*$//')
+        [[ -z "$cmd" || "$cmd" =~ lsb_release ]] && continue
+        case "$kind" in
+            repo)
+                seen_repo=true
+                CHANNELS+=("$value")
+                REPO_LINES[$value]="$cmd"
+                ;;
+            install)
+                local channel
+                for channel in $value; do
+                    INSTALL_COMMANDS[$channel]+="$cmd"$'\n'
+                done
+                ;;
+            plain)
+                if [ "$seen_repo" = false ]; then
+                    SETUP_COMMANDS+=("$cmd")
+                fi
+                ;;
+        esac
+    done < <(awk '
+    /<div class="code-block"[^>]*>/ {
+        kind = "plain"; value = ""
+        if (match($0, /data-channel="[^"]*"/)) {
+            kind = "repo"; value = substr($0, RSTART + 14, RLENGTH - 15)
+        } else if (match($0, /data-channels="[^"]*"/)) {
+            kind = "install"; value = substr($0, RSTART + 15, RLENGTH - 16)
+        }
+        line = $0
+        gsub(/.*<div class="code-block"[^>]*>/, "", line)
+        gsub(/<button.*/, "", line)
+        gsub(/<\/div>.*/, "", line)
+        print kind "\037" value "\037" line
+    }
+    ' "$html_file")
+
+    if [ ${#CHANNELS[@]} -eq 0 ]; then
+        log_error "No code block in $html_file declares data-channel; nothing to install"
         return 1
     fi
+
+    local channel
+    for channel in "${CHANNELS[@]}"; do
+        if [ -z "${INSTALL_COMMANDS[$channel]:-}" ]; then
+            log_error "Channel $channel has no install command (data-channels) in $html_file"
+            return 1
+        fi
+    done
+    return 0
+}
+
+# Function to print the install plan
+show_install_plan() {
+    local channel
+    log_info "Setup commands:"
+    printf '  %s\n' "${SETUP_COMMANDS[@]}"
+    for channel in "${CHANNELS[@]}"; do
+        log_info "Channel $channel:"
+        echo "  ${REPO_LINES[$channel]}"
+        printf '%s' "${INSTALL_COMMANDS[$channel]}" | sed 's/^/  /'
+    done
+}
+
+# Function to test the install plan in Docker containers, one per channel.
+# The page tells the reader to put their own codename in the repository line,
+# so the test does the same with the codename of the container.
+test_commands_in_container() {
+    local distribution="$1"
+    local failed=()
+    local channel
+
+    for channel in "${CHANNELS[@]}"; do
+        log_info "Testing channel $channel in Docker container ($distribution)..."
+
+        local script_file
+        script_file=$(mktemp)
+        {
+            echo '#!/bin/bash'
+            echo 'set -e'
+            echo 'export DEBIAN_FRONTEND=noninteractive'
+            echo 'CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")'
+            echo 'apt-get update'
+            printf '%s\n' "${SETUP_COMMANDS[@]}"
+            echo "${REPO_LINES[$channel]}" | sed -E 's#(deb (\[[^]]*\] )?https?://[^ ]+) [a-z]+ #\1 ${CODENAME} #'
+            echo 'apt-get update'
+            printf '%s' "${INSTALL_COMMANDS[$channel]}"
+            echo 'echo "Installation completed successfully!"'
+        } > "$script_file"
+        chmod +x "$script_file"
+
+        if docker run --platform linux/amd64 --rm -v "$script_file:/test_script.sh" "$distribution" /bin/bash -c "/test_script.sh"; then
+            log_success "✅ Channel $channel installs in $distribution"
+            rm -f "$script_file"
+        else
+            log_error "❌ Channel $channel failed in $distribution"
+            log_info "Test script saved at: $script_file (for debugging)"
+            failed+=("$channel")
+        fi
+    done
+
+    if [ ${#failed[@]} -ne 0 ]; then
+        log_error "Failed channels: ${failed[*]}"
+        return 1
+    fi
+    return 0
 }
 
 # Function to run syntax check on commands
@@ -312,7 +392,7 @@ test_html_file() {
     # Docker test (optional)
     if [ "$run_docker_test" = "true" ]; then
         if command -v docker >/dev/null 2>&1; then
-            if ! test_commands_in_container "$distribution" "${EXTRACTED_COMMANDS[@]}"; then
+            if ! extract_install_plan "$html_file" || ! test_commands_in_container "$distribution"; then
                 log_error "❌ Docker container test failed"
                 return 1
             fi
@@ -335,6 +415,7 @@ usage() {
     echo "  --html <file>           HTML file to test"
     echo "  --distribution <dist>   Docker distribution to test with (default: ubuntu:noble)"
     echo "  --docker               Run actual Docker test (default: false)"
+    echo "  --show-commands        Print the per-channel install plan and exit"
     echo ""
     echo "Examples:"
     echo "  $0 --html stable_packages_page.html"
@@ -347,6 +428,7 @@ EXTRACTED_COMMANDS=()
 HTML_FILE=""
 DISTRIBUTION="ubuntu:noble"
 RUN_DOCKER_TEST=false
+SHOW_COMMANDS=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -361,6 +443,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --docker)
             RUN_DOCKER_TEST=true
+            shift
+            ;;
+        --show-commands)
+            SHOW_COMMANDS=true
             shift
             ;;
         -h|--help)
@@ -380,6 +466,11 @@ if [ -z "$HTML_FILE" ]; then
     log_error "HTML file is required"
     usage
     exit 1
+fi
+
+if [ "$SHOW_COMMANDS" = true ]; then
+    extract_install_plan "$HTML_FILE" && show_install_plan
+    exit $?
 fi
 
 # Run the test
