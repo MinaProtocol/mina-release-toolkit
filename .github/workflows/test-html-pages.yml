@@ -18,35 +18,21 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        # Only stable is in use; the nightly and unstable repositories are not published to.
         html_file:
           - stable_packages_page.html
-          - nightly_packages_page.html
-          - unstable_packages_page.html
         distro:
-          - ubuntu:focal
-          - ubuntu:24.04
-          - debian:bullseye
+          - ubuntu:noble
+          - ubuntu:jammy
+          - debian:bookworm
       fail-fast: false
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up Docker Daemon
-      run: |
-        sudo systemctl start docker
-        sudo usermod -aG docker $USER
-        # Verify Docker is working
-        docker --version
-        docker info
-
-    - name: Enable Docker-in-Docker
-      run: |
-        # Start Docker daemon with privileged mode support
-        sudo dockerd --host=unix:///var/run/docker.sock --host=tcp://0.0.0.0:2376 &
-        sleep 5
-        # Verify Docker daemon is running
-        docker ps
+    - name: Verify Docker availability
+      run: docker info
 
     - name: Make test script executable
       run: chmod +x debian/repositories/test_from_html.sh
@@ -55,33 +41,8 @@ jobs:
       run: |
         cd debian/repositories
         echo "🧪 Testing ${{ matrix.html_file }} on ${{ matrix.distro }}"
-        ./test_from_html.sh --html ${{ matrix.html_file }} --distribution ${{ matrix.distro }}
+        ./test_from_html.sh --html ${{ matrix.html_file }} --distribution ${{ matrix.distro }} --docker
       timeout-minutes: 20
-
-    - name: Verify Mina installation in container
-      if: success()
-      run: |
-        cd debian/repositories
-        echo "🔍 Verifying Mina installation worked correctly..."
-        
-        # Get the container name from the last test run
-        CONTAINER_NAME=$(docker ps -a --format "table {{.Names}}" | grep mina_html_test | head -1)
-        
-        if [ -n "$CONTAINER_NAME" ]; then
-          echo "📦 Checking installed Mina packages:"
-          docker exec $CONTAINER_NAME dpkg -l | grep mina || echo "No Mina packages found"
-          
-          echo "🔧 Checking if Mina command is available:"
-          docker exec $CONTAINER_NAME which mina || echo "Mina command not found in PATH"
-          
-          echo "📋 Checking Mina version:"
-          docker exec $CONTAINER_NAME mina version || echo "Could not get Mina version"
-          
-          # Clean up the container
-          docker rm $CONTAINER_NAME
-        else
-          echo "⚠️ No test container found to verify"
-        fi
 
     - name: Show commands for ${{ matrix.html_file }} (on failure)
       if: failure()
@@ -89,12 +50,3 @@ jobs:
         cd debian/repositories
         echo "=== Commands extracted from ${{ matrix.html_file }} ==="
         ./test_from_html.sh --html ${{ matrix.html_file }} --show-commands || true
-        
-        echo "=== Docker containers (for debugging) ==="
-        docker ps -a | grep mina_html_test || echo "No test containers found"
-
-    - name: Cleanup failed containers
-      if: always()
-      run: |
-        # Clean up any remaining test containers
-        docker ps -a --format "table {{.Names}}" | grep mina_html_test | xargs -r docker rm -f || true

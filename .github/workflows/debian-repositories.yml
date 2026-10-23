@@ -19,8 +19,9 @@ jobs:
     
     strategy:
       matrix:
-        repository: [stable, nightly, unstable]
-        distro: [ubuntu:20.04, ubuntu:22.04, debian:bullseye]
+        # Only stable is in use; the nightly and unstable repositories are not published to.
+        repository: [stable]
+        distro: [ubuntu:noble, ubuntu:jammy, debian:bookworm]
     
     steps:
     - name: Checkout repository
@@ -74,8 +75,9 @@ jobs:
     
     strategy:
       matrix:
-        repository: [stable, nightly, unstable]
-        distro: [ubuntu:20.04, ubuntu:22.04, debian:bullseye]
+        # Only stable is in use; the nightly and unstable repositories are not published to.
+        repository: [stable]
+        distro: [ubuntu:noble, ubuntu:jammy, debian:bookworm]
     
     steps:
     - name: Checkout repository

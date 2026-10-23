@@ -900,7 +900,7 @@
                     <div class="step">
                         <h3><span class="step-number">3</span>Add Mina APT Repository</h3>
                         <p>Add the Mina stable APT repository:</p>
-                        <div class="code-block">echo "deb https://stable.apt.packages.minaprotocol.com bullseye stable" > /etc/apt/sources.list.d/mina.list
+                        <div class="code-block" data-channel="stable">echo "deb https://stable.apt.packages.minaprotocol.com bullseye stable" > /etc/apt/sources.list.d/mina.list
                             <button class="copy-button" onclick="copyToClipboard(&quot;echo \\&quot;deb https://stable.apt.packages.minaprotocol.com bullseye stable\\&quot; > /etc/apt/sources.list.d/mina.list&quot;, this)">Copy</button>
                         </div>
 
@@ -932,7 +932,7 @@
                             <button class="copy-button" onclick="copyToClipboard('apt-get update', this)">Copy</button>
                         </div>
                         
-                        <div class="code-block">apt-get install -y mina-mainnet
+                        <div class="code-block" data-channels="stable">apt-get install -y mina-mainnet
                             <button class="copy-button" onclick="copyToClipboard('apt-get install -y mina-mainnet', this)">Copy</button>
                         </div>
                         
