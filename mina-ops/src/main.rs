@@ -47,6 +47,8 @@ enum Command {
     Builds(BuildsArgs),
     /// Which nightly jobs are failing, and which of them are new
     Nightly(NightlyArgs),
+    /// Serve the console on the loopback interface
+    Serve(ServeArgs),
     /// Serve the same queries over MCP on stdin and stdout
     Mcp,
 }
@@ -128,6 +130,21 @@ struct BuildsArgs {
 }
 
 #[derive(clap::Args)]
+struct ServeArgs {
+    /// Port on 127.0.0.1. The console never binds any other interface.
+    #[arg(long, default_value_t = 7777)]
+    port: u16,
+
+    /// Mint a token for this run only, instead of reusing the stored one.
+    #[arg(long)]
+    ephemeral_token: bool,
+
+    /// Replace the stored token with a new one, invalidating old bookmarks.
+    #[arg(long)]
+    rotate_token: bool,
+}
+
+#[derive(clap::Args)]
 struct NightlyArgs {
     /// Pipeline to report on. Defaults to the project's nightly pipeline.
     #[arg(long)]
@@ -160,6 +177,19 @@ async fn run(cli: &Cli) -> OpsResult<()> {
 
     // The MCP transport owns stdout, so it is served before anything can
     // print, and it selects its project per call rather than up front.
+    if let Command::Serve(args) = &cli.command {
+        return mina_ops::serve::serve(
+            registry,
+            mina_ops::serve::ServeOptions {
+                port: args.port,
+                project: cli.project.clone(),
+                persist_token: !args.ephemeral_token,
+                rotate_token: args.rotate_token,
+            },
+        )
+        .await;
+    }
+
     if matches!(cli.command, Command::Mcp) {
         eprintln!("mina-ops MCP server on stdio; registry: {source}");
         return mina_ops::mcp::serve(registry).await;
@@ -258,7 +288,9 @@ async fn run(cli: &Cli) -> OpsResult<()> {
                 print!("{}", report::render_nightly(&report));
             }
         }
-        Command::Mcp => unreachable!("served before the project is resolved"),
+        Command::Mcp | Command::Serve(_) => {
+            unreachable!("served before the project is resolved")
+        }
     }
 
     if !cli.json {
