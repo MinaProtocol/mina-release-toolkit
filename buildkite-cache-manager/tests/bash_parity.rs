@@ -229,34 +229,26 @@ fn deprecated_override_flag_is_accepted() {
     assert!(out.status.success(), "{out:?}");
 }
 
-/// `cp` copies contents, not the mode, and the CI cache depends on that: it
-/// is a CIFS mount with a forced owner, where a writer running as another uid
-/// may create a file but may not `fchmod` it. A source the writer could not
-/// even overwrite locally still lands in the cache, readable, with the
-/// mount's default mode rather than the source's.
+/// `cp` without `-p` creates the destination with the source's mode and then
+/// leaves it alone: no `chmod` afterwards. The CI cache depends on that: it is
+/// a CIFS mount with a forced owner, where a writer running as another uid may
+/// create a file but may not `fchmod` it (which `std::fs::copy` does). An
+/// executable source stays executable in the cache, as with `cp`.
 #[cfg(unix)]
 #[test]
-fn write_copies_contents_and_leaves_the_mode_to_the_destination() {
+fn write_creates_the_file_with_the_source_mode_like_cp() {
     use std::os::unix::fs::PermissionsExt;
 
     let env = Env::new();
-    let src = env.local.join("ledger.tar.gz");
-    put(&src, "ledger");
-    fs::set_permissions(&src, fs::Permissions::from_mode(0o400)).unwrap();
+    let src = env.local.join("rosetta-cli");
+    put(&src, "#!/bin/sh\n");
+    fs::set_permissions(&src, fs::Permissions::from_mode(0o755)).unwrap();
 
-    let out = env.run(&["write", s(&src), "hardfork/ledgers/"], &[]);
+    let out = env.run(&["write", s(&src), "tool-cache/"], &[]);
     assert!(out.status.success(), "{out:?}");
 
-    let cached = env.cached("hardfork/ledgers/ledger.tar.gz");
-    assert_eq!(fs::read_to_string(&cached).unwrap(), "ledger");
+    let cached = env.cached("tool-cache/rosetta-cli");
+    assert_eq!(fs::read_to_string(&cached).unwrap(), "#!/bin/sh\n");
     let mode = fs::metadata(&cached).unwrap().permissions().mode() & 0o777;
-    assert_ne!(
-        mode, 0o400,
-        "the source mode was copied onto the destination"
-    );
-    assert_ne!(
-        mode & 0o200,
-        0,
-        "the destination is not writable by its owner"
-    );
+    assert_eq!(mode, 0o755, "cp keeps the source mode on a new file");
 }
