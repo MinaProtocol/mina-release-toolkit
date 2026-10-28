@@ -228,3 +228,27 @@ fn deprecated_override_flag_is_accepted() {
     let out = env.run(&["write", "--override", s(&src), "out/"], &[]);
     assert!(out.status.success(), "{out:?}");
 }
+
+/// `cp` without `-p` creates the destination with the source's mode and then
+/// leaves it alone: no `chmod` afterwards. The CI cache depends on that: it is
+/// a CIFS mount with a forced owner, where a writer running as another uid may
+/// create a file but may not `fchmod` it (which `std::fs::copy` does). An
+/// executable source stays executable in the cache, as with `cp`.
+#[cfg(unix)]
+#[test]
+fn write_creates_the_file_with_the_source_mode_like_cp() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let env = Env::new();
+    let src = env.local.join("rosetta-cli");
+    put(&src, "#!/bin/sh\n");
+    fs::set_permissions(&src, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let out = env.run(&["write", s(&src), "tool-cache/"], &[]);
+    assert!(out.status.success(), "{out:?}");
+
+    let cached = env.cached("tool-cache/rosetta-cli");
+    assert_eq!(fs::read_to_string(&cached).unwrap(), "#!/bin/sh\n");
+    let mode = fs::metadata(&cached).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o755, "cp keeps the source mode on a new file");
+}

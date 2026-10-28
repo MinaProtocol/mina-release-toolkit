@@ -181,6 +181,30 @@ fn copy_dir_recursive(src: &Path, dst: &Path, force: bool) -> Result<()> {
     Ok(())
 }
 
+/// Copy `src` into a new file `dst` the way `cp` (without `-p`) does: the
+/// file is created with the source's mode, masked by the umask, and its
+/// contents copied. Nothing is changed on `dst` after it exists.
+///
+/// `std::fs::copy` instead `fchmod`s the destination to the source's mode
+/// after creating it. The CI cache is a CIFS mount with a forced owner
+/// (`uid=1001,file_mode=0777`), and the toolchain container writes to it as
+/// another uid. Such a writer may create and fill a file there, but `fchmod`
+/// is reserved to the owner and fails with EPERM, so every write made from
+/// inside a container failed with "Operation not permitted". The bash
+/// `write-to-dir` this replaced was a plain `cp`, which never had that step.
+fn copy_contents(src: &Path, dst: &Path) -> std::io::Result<u64> {
+    let mut reader = std::fs::File::open(src)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        options.mode(reader.metadata()?.permissions().mode());
+    }
+    let mut writer = options.open(dst)?;
+    std::io::copy(&mut reader, &mut writer)
+}
+
 /// Copy to a temporary sibling, then rename over `dst`. Concurrent readers
 /// never see a partial file, and concurrent writers of the same path cannot
 /// interleave: the last rename wins with a complete file.
@@ -196,7 +220,7 @@ fn copy_file_atomic(src: &Path, dst: &Path, force: bool) -> Result<()> {
         name.to_string_lossy(),
         std::process::id()
     ));
-    if let Err(e) = std::fs::copy(src, &tmp) {
+    if let Err(e) = copy_contents(src, &tmp) {
         let _ = std::fs::remove_file(&tmp);
         return Err(anyhow::anyhow!(
             "Failed to copy {} -> {}: {e}",
