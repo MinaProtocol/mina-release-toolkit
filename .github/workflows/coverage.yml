@@ -6,6 +6,7 @@ on:
     paths:
       - 'release-manager/**'
       - 'mina-bench-upload/**'
+      - 'mina-json-bytes/**'
       - 'buildkite-cache-manager/**'
       - 'mina-ops/**'
       - '.github/workflows/coverage.yml'
@@ -14,6 +15,7 @@ on:
     paths:
       - 'release-manager/**'
       - 'mina-bench-upload/**'
+      - 'mina-json-bytes/**'
       - 'buildkite-cache-manager/**'
       - 'mina-ops/**'
       - '.github/workflows/coverage.yml'
@@ -35,7 +37,7 @@ jobs:
       # doesn't poison the others, and so Codecov gets per-flag reports.
       fail-fast: false
       matrix:
-        crate: [release-manager, mina-bench-upload, buildkite-cache-manager, mina-ops]
+        crate: [release-manager, mina-bench-upload, mina-json-bytes, buildkite-cache-manager, mina-ops]
 
     steps:
       - name: Checkout

@@ -1,9 +1,9 @@
 # Packaging
 
-Single Docker image and single `.deb` that bundle all four toolkit
+Single Docker image and single `.deb` that bundle all five toolkit
 binaries (`deb-toolkit`, `release-manager`, `mina-bench-upload`,
-`buildkite-cache-manager`) so a CI box can `apt install` once instead
-of cloning four crates and running `cargo build` four times.
+`mina-json-bytes`, `buildkite-cache-manager`) so a CI box can `apt install`
+once instead of cloning five crates and running `cargo build` five times.
 
 ## What you get
 
@@ -13,12 +13,13 @@ mina-release-toolkit_<version>_amd64.deb
     ├── deb-toolkit
     ├── release-manager
     ├── mina-bench-upload
+    ├── mina-json-bytes
     └── buildkite-cache-manager
 ```
 
 ```
 ghcr.io/minaprotocol/mina-release-toolkit:<tag>
-├── /usr/bin/{deb-toolkit,release-manager,mina-bench-upload,buildkite-cache-manager}
+├── /usr/bin/{deb-toolkit,release-manager,mina-bench-upload,mina-json-bytes,buildkite-cache-manager}
 └── runtime deps preinstalled (dpkg-dev, debsigs, gnupg, awscli, …)
 ```
 
@@ -35,9 +36,10 @@ docker run --rm mina-release-toolkit:dev deb-toolkit --help
 ### Debian
 
 ```bash
-# Build all four binaries first.
+# Build all five binaries first.
 (cd release-manager         && cargo build --release)
 (cd mina-bench-upload       && cargo build --release)
+(cd mina-json-bytes         && cargo build --release)
 (cd buildkite-cache-manager && cargo build --release)
 (cd deb-toolkit             && cargo build --release)
 
@@ -65,6 +67,6 @@ The `.github/workflows/package.yml` workflow builds both artifacts:
 
 | File | What it is |
 | --- | --- |
-| [`Dockerfile`](Dockerfile) | Multi-stage build. Stage 1 compiles the four Rust crates against `rust:1.82-bookworm`. Stage 2 is `debian:bookworm-slim` with just the runtime deps. |
+| [`Dockerfile`](Dockerfile) | Multi-stage build. Stage 1 compiles the five Rust crates against `rust:1.82-bookworm`. Stage 2 is `debian:bookworm-slim` with just the runtime deps. |
 | [`build-deb.sh`](build-deb.sh) | Drives the .deb build using the just-built `deb-toolkit` binary (eats our own dogfood). |
 | [`defaults/toolkit.json`](defaults/toolkit.json) | Defaults file consumed by `deb-toolkit build` — pins per-release-invariant fields (maintainer, description, runtime depends, etc.). |

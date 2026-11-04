@@ -1,0 +1,15 @@
+[package]
+name = "mina-json-bytes"
+version = "0.1.0"
+edition = "2021"
+authors = ["Mina Protocol Team"]
+description = "Carry bytes that are not valid UTF-8 through jq. Token symbols and zkApp URIs are arbitrary bytes, and jq replaces each invalid byte with U+FFFD."
+license = "Apache-2.0"
+
+[[bin]]
+name = "mina-json-bytes"
+path = "src/main.rs"
+
+[lib]
+name = "mina_json_bytes"
+path = "src/lib.rs"

@@ -1,0 +1,55 @@
+name: mina-json-bytes CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'mina-json-bytes/**'
+      - '.github/workflows/mina-json-bytes.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'mina-json-bytes/**'
+      - '.github/workflows/mina-json-bytes.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+# Cancel superseded runs on the same PR / branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+
+    - name: Configure Rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: mina-json-bytes
+
+    # The integration tests in tests/cli.rs run the real jq, which is
+    # preinstalled on the runner.
+    - name: Check formatting
+      working-directory: mina-json-bytes
+      run: cargo fmt --all -- --check
+
+    - name: Run Clippy
+      working-directory: mina-json-bytes
+      run: cargo clippy --no-deps --all-targets -- -D warnings
+
+    - name: Run tests
+      working-directory: mina-json-bytes
+      run: cargo test --locked --verbose
