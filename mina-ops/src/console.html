@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mina-ops console</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1d21; --muted: #5f6672; --line: #e2e5ea;
+    --ok: #1a7f45; --bad: #b3261e; --warn: #8a6100; --accent: #2f5ecc;
+    --panel: #f7f8fa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d; --fg: #e8eaee; --muted: #99a1ad; --line: #2c3038;
+      --ok: #5fd08a; --bad: #ff8a80; --warn: #e3b341; --accent: #86a9f5;
+      --panel: #1c1f26;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex;
+    align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .01em; }
+  .muted { color: var(--muted); }
+  nav { display: flex; gap: 4px; padding: 10px 20px 0; }
+  nav button { background: none; border: 1px solid transparent; border-bottom: none;
+    padding: 7px 14px; border-radius: 6px 6px 0 0; color: var(--muted); cursor: pointer;
+    font: inherit; }
+  nav button[aria-selected="true"] { background: var(--panel); border-color: var(--line);
+    color: var(--fg); font-weight: 600; }
+  main { padding: 18px 20px 40px; border-top: 1px solid var(--line); margin-top: -1px; }
+  section[hidden] { display: none; }
+  form { display: grid; gap: 12px; max-width: 780px; }
+  .row { display: grid; grid-template-columns: 310px 1fr; gap: 12px; align-items: center; }
+  /* Variable names such as USE_ARTIFACTS_FROM_BUILDKITE_BUILD are long and
+     must stay readable rather than being clipped. */
+  label { color: var(--muted); overflow-wrap: anywhere; }
+  @media (max-width: 720px) { .row { grid-template-columns: 1fr; gap: 4px; } }
+  input, select { font: inherit; padding: 7px 9px; border: 1px solid var(--line);
+    border-radius: 6px; background: var(--bg); color: var(--fg); width: 100%; }
+  .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button.go { background: var(--accent); color: #fff; border: none; padding: 8px 16px;
+    border-radius: 6px; cursor: pointer; font: inherit; font-weight: 600; }
+  button.go:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost { background: none; border: 1px solid var(--line); color: var(--fg);
+    padding: 8px 14px; border-radius: 6px; cursor: pointer; font: inherit; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px; overflow-x: auto; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line);
+    font-size: 13px; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px;
+    border: 1px solid var(--line); font-size: 12px; }
+  .checks li { margin-bottom: 4px; }
+  ul { padding-left: 18px; margin: 8px 0; }
+  .note { background: var(--panel); border-left: 3px solid var(--warn); padding: 10px 12px;
+    border-radius: 0 6px 6px 0; margin: 12px 0; }
+  details.group { border: 1px solid var(--line); border-radius: 8px; margin: 10px 0;
+    background: var(--panel); }
+  details.group > summary { cursor: pointer; padding: 10px 14px; font-weight: 600;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; list-style: none; }
+  details.group > summary::-webkit-details-marker { display: none; }
+  details.group > summary::before { content: "\25B8"; color: var(--muted);
+    transition: transform .12s ease; display: inline-block; }
+  details.group[open] > summary::before { transform: rotate(90deg); }
+  details.group > .body { padding: 0 14px 12px; }
+  details.group table { margin-top: 0; }
+  .tally { font-weight: 400; display: flex; gap: 6px; flex-wrap: wrap; }
+  .tally .pill { border-color: transparent; background: var(--bg); }
+  .tally .pill.ok { color: var(--ok); } .tally .pill.bad { color: var(--bad); }
+  .tally .pill.warn { color: var(--warn); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>mina-ops</h1>
+  <span class="muted" id="project">local console — reads everything, writes only when you confirm</span>
+</header>
+
+<nav>
+  <button id="tab-inventory" aria-selected="true" onclick="showTab('inventory')">Inventory</button>
+  <button id="tab-nightly" aria-selected="false" onclick="showTab('nightly')">Nightly</button>
+  <button id="tab-cache" aria-selected="false" onclick="showTab('cache')">Cache</button>
+  <button id="tab-pipelines" aria-selected="false" onclick="showTab('pipelines')">Pipelines</button>
+</nav>
+
+<main>
+  <section id="inventory">
+    <form onsubmit="loadInventory(event)">
+      <div class="row"><label for="commit">Commit or version</label>
+        <input id="commit" placeholder="8c0c2e6, a full hash, or 3.3.0-8c0c2e6"></div>
+      <div class="row"><label for="repo_path">Local checkout</label>
+        <input id="repo_path" placeholder="only if MINA_REPO is not set"></div>
+      <div class="row"><label for="channel">Channel</label>
+        <select id="channel"></select></div>
+      <div class="row"><label for="codenames">Codenames</label>
+        <input id="codenames" placeholder="leave blank for the project default"></div>
+      <div class="actions">
+        <button class="go" type="submit">Look up</button>
+        <span class="muted" id="inventory-status"></span>
+      </div>
+    </form>
+    <div id="inventory-out"></div>
+  </section>
+
+  <section id="nightly" hidden>
+    <form onsubmit="loadNightly(event)">
+      <div class="row"><label for="nightly-branch">Branch</label>
+        <input id="nightly-branch" placeholder="project default"></div>
+      <div class="row"><label for="nightly-last">Builds to compare</label>
+        <input id="nightly-last" type="number" min="1" max="20" value="3"></div>
+      <div class="actions">
+        <button class="go" type="submit">Compare</button>
+        <span class="muted" id="nightly-status"></span>
+      </div>
+    </form>
+    <div id="nightly-out"></div>
+  </section>
+
+  <section id="cache" hidden>
+    <div class="actions">
+      <button class="go" onclick="loadCache()">Load the cache</button>
+      <label class="muted"><input type="checkbox" id="cache-builds-only"
+        onchange="renderCache()" style="width:auto"> hide shared folders (legacy, debs, …)</label>
+      <span class="muted" id="cache-status"></span>
+    </div>
+    <div id="cache-out"></div>
+  </section>
+
+  <section id="pipelines" hidden>
+    <div class="row"><label for="pipeline-key">Pipeline</label>
+      <select id="pipeline-key" onchange="renderPipelineForm()"></select></div>
+    <p class="muted" id="pipeline-description"></p>
+    <form onsubmit="checkPipeline(event)">
+      <div class="row"><label for="pipeline-branch">Branch</label>
+        <input id="pipeline-branch" required></div>
+      <div id="pipeline-fields"></div>
+      <div class="actions">
+        <button class="go" type="submit">Check</button>
+        <button class="ghost" type="button" onclick="copyEnv()">Copy as env block</button>
+        <span class="muted" id="pipeline-status"></span>
+      </div>
+    </form>
+    <div id="pipeline-out"></div>
+  </section>
+
+</main>
+
+<script>
+const TOKEN = "__TOKEN__";
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: { "x-mina-ops-token": TOKEN, "content-type": "application/json", ...(options.headers || {}) },
+  });
+  const body = await response.json().catch(() => ({ error: response.statusText }));
+  if (!response.ok && !body.checks) throw new Error(body.error || response.statusText);
+  return body;
+}
+
+const TABS = ["inventory", "nightly", "cache", "pipelines"];
+
+function showTab(name) {
+  for (const tab of TABS) {
+    document.getElementById(tab).hidden = tab !== name;
+    document.getElementById("tab-" + tab).setAttribute("aria-selected", String(tab === name));
+  }
+  // Keep the token out of history: replace rather than push, and change only
+  // the fragment.
+  history.replaceState(null, "", "#" + name);
+}
+
+function tabFromHash() {
+  const wanted = location.hash.replace("#", "");
+  return TABS.includes(wanted) ? wanted : "inventory";
+}
+window.addEventListener("hashchange", () => showTab(tabFromHash()));
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function presenceClass(status) {
+  return status === "present" ? "ok" : status === "missing" ? "bad" : "warn";
+}
+
+function tally(statuses) {
+  const counted = { present: 0, missing: 0, unknown: 0 };
+  for (const status of statuses) counted[status] = (counted[status] || 0) + 1;
+  const pills = [];
+  if (counted.present) pills.push(`<span class="pill ok">${counted.present} present</span>`);
+  if (counted.missing) pills.push(`<span class="pill bad">${counted.missing} missing</span>`);
+  if (counted.unknown) pills.push(`<span class="pill warn">${counted.unknown} unknown</span>`);
+  return { html: `<span class="tally">${pills.join("")}</span>`,
+           allPresent: counted.missing === 0 && counted.unknown === 0 && counted.present > 0 };
+}
+
+/// A group starts open when it holds something to look at, and closed when
+/// everything in it is present — the count stays visible either way.
+function group(title, statuses, bodyHtml) {
+  const { html, allPresent } = tally(statuses);
+  return `<details class="group" ${allPresent ? "" : "open"}>
+      <summary>${escapeHtml(title)} ${html}</summary>
+      <div class="body">${bodyHtml}</div>
+    </details>`;
+}
+
+function warningsBlock(warnings) {
+  if (!warnings || !warnings.length) return "";
+  return `<div class="note"><strong>Limits and warnings</strong><ul>` +
+    warnings.map(w => `<li>${escapeHtml(w)}</li>`).join("") + `</ul></div>`;
+}
+
+async function loadSchema() {
+  const schema = await api("/api/schema");
+  document.getElementById("project").textContent =
+    `${schema.project} · ${schema.repo} — reads everything, writes only when you confirm`;
+  fill("channel", schema.channels, "unstable");
+  if (schema.nightly_branch) document.getElementById("nightly-branch").placeholder = schema.nightly_branch;
+}
+
+function fill(id, values, selected) {
+  const element = document.getElementById(id);
+  element.innerHTML = values.map(v =>
+    `<option ${v === selected ? "selected" : ""}>${escapeHtml(v)}</option>`).join("");
+}
+
+async function loadInventory(event) {
+  event.preventDefault();
+  const status = document.getElementById("inventory-status");
+  const out = document.getElementById("inventory-out");
+  const value = document.getElementById("commit").value.trim();
+  if (!value) return;
+
+  const parameters = new URLSearchParams();
+  // A commit is hexadecimal and 7 to 40 characters, short hashes included.
+  // Anything else is treated as a version.
+  const looksLikeCommit = /^[0-9a-f]{7,40}$/i.test(value);
+  parameters.set(looksLikeCommit ? "commit" : "version", value);
+  const path = document.getElementById("repo_path").value.trim();
+  if (path) parameters.set("repo_path", path);
+  parameters.set("channel", document.getElementById("channel").value);
+  const codenames = document.getElementById("codenames").value.trim();
+  if (codenames) parameters.set("codenames", codenames);
+
+  status.textContent = "looking…"; out.innerHTML = "";
+  try {
+    const data = await api("/api/artifacts?" + parameters.toString());
+    status.textContent = "";
+    out.innerHTML = renderInventory(data);
+  } catch (e) {
+    status.textContent = ""; out.innerHTML = `<p class="bad">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+const VERSION_SOURCES = {
+  given: "as given",
+  buildkite_artifacts: "from Buildkite artifacts",
+  ci_cache: "from the CI cache",
+  debian_repository: "recovered from the Debian repository",
+};
+
+function renderInventory(data) {
+  const source = VERSION_SOURCES[data.version_source] || data.version_source || "";
+  let html = `<h3>${escapeHtml(data.version || "version unresolved")}
+    <span class="muted">${escapeHtml(source)}</span></h3>`;
+
+  if (data.pull_requests?.length) {
+    html += `<p>` + data.pull_requests.map(pr =>
+      `<a href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">#${pr.number}</a>
+       ${escapeHtml(pr.title)} <span class="pill">${escapeHtml(pr.state)}</span>`).join("<br>") + `</p>`;
+  }
+
+  if (data.builds?.length) {
+    html += `<table><tr><th>Pipeline</th><th>Build</th><th>State</th><th>Branch</th></tr>` +
+      data.builds.map(b => `<tr><td>${escapeHtml(b.pipeline)}</td>
+        <td><a href="${escapeHtml(b.web_url)}" target="_blank" rel="noreferrer">#${b.number}</a></td>
+        <td>${escapeHtml(b.state)}</td><td>${escapeHtml(b.branch)}</td></tr>`).join("") + `</table>`;
+  }
+
+  if (data.cached_builds?.length) {
+    const body = `<table><tr><th>Build</th><th>Packages</th><th>Where</th></tr>` +
+      data.cached_builds.map(c => `<tr>
+        <td>${escapeHtml(c.build_id)}</td>
+        <td class="${presenceClass(c.presence.status)}">${c.presence.status === "present"
+          ? c.debians.length + " packages" : escapeHtml(c.presence.status)}
+          ${c.presence.reason ? `<br><span class="muted">${escapeHtml(c.presence.reason)}</span>` : ""}</td>
+        <td class="muted">${escapeHtml(c.source)}</td></tr>`).join("") + `</table>`;
+    html += group("CI cache", data.cached_builds.map(c => c.presence.status), body);
+  }
+
+  if (data.debians?.length) {
+    const body = `<table><tr><th>Package</th><th>Arch</th><th>Codename</th><th>Repository</th><th></th></tr>` +
+      data.debians.map(d => `<tr><td>${escapeHtml(d.package)}</td><td>${escapeHtml(d.arch)}</td>
+        <td>${escapeHtml(d.codename)}</td><td class="muted">${escapeHtml(d.bucket)}</td>
+        <td class="${presenceClass(d.presence.status)}">${escapeHtml(d.presence.status)}</td></tr>`).join("") + `</table>`;
+    html += group("Debian packages", data.debians.map(d => d.presence.status), body);
+  }
+
+  if (data.dockers?.length) {
+    const body = `<table><tr><th>Image</th><th></th></tr>` +
+      data.dockers.map(d => `<tr><td>${escapeHtml(d.repo + "/" + d.image + ":" + d.tag)}</td>
+        <td class="${presenceClass(d.presence.status)}">${escapeHtml(d.presence.status)}</td></tr>`).join("") + `</table>`;
+    html += group("Docker images", data.dockers.map(d => d.presence.status), body);
+  }
+
+  return html + warningsBlock(data.warnings);
+}
+
+async function loadNightly(event) {
+  event.preventDefault();
+  const status = document.getElementById("nightly-status");
+  const out = document.getElementById("nightly-out");
+  const parameters = new URLSearchParams();
+  const branch = document.getElementById("nightly-branch").value.trim();
+  if (branch) parameters.set("branch", branch);
+  parameters.set("last", document.getElementById("nightly-last").value || "3");
+
+  status.textContent = "comparing…"; out.innerHTML = "";
+  try {
+    const data = await api("/api/nightly?" + parameters.toString());
+    status.textContent = "";
+    out.innerHTML = renderNightly(data);
+  } catch (e) {
+    status.textContent = ""; out.innerHTML = `<p class="bad">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderNightly(data) {
+  let html = `<h3>${escapeHtml(data.pipeline)} <span class="muted">${escapeHtml(data.branch || "every branch")}</span></h3>`;
+
+  html += `<table><tr><th>Build</th><th>State</th><th>Failing</th><th>Owner</th></tr>` +
+    (data.builds || []).map(b => `<tr>
+      <td><a href="${escapeHtml(b.web_url)}" target="_blank" rel="noreferrer">#${b.number}</a></td>
+      <td class="${b.state === "passed" ? "ok" : "bad"}">${escapeHtml(b.state)}</td>
+      <td>${b.failures.length} of ${b.job_count}</td>
+      <td>${(b.pull_requests || []).map(pr =>
+        `<a href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">#${pr.number}</a>
+         ${escapeHtml(pr.author || "")}`).join("<br>")}</td></tr>`).join("") + `</table>`;
+
+  const failures = data.latest_failures || [];
+  const group = (trend) => failures.filter(f => f.trend === trend);
+  const list = (items, className) => items.length
+    ? `<ul>` + items.map(f => `<li class="${className}">${escapeHtml(f.name)}` +
+        (f.consecutive ? ` <span class="muted">(${f.consecutive} builds)</span>` : "") +
+        (f.soft_failed ? ` <span class="muted">soft failure</span>` : "") + `</li>`).join("") + `</ul>`
+    : `<p class="muted">none</p>`;
+
+  html += `<h4>New</h4>${list(group("new"), "bad")}`;
+  html += `<h4>Already failing</h4>${list(group("persistent"), "warn")}`;
+  const unknown = group("unknown");
+  if (unknown.length) html += `<h4>No earlier build to compare against</h4>${list(unknown, "warn")}`;
+  if (data.fixed_since_previous?.length) {
+    html += `<h4>Fixed since the previous build</h4><ul>` +
+      data.fixed_since_previous.map(f => `<li class="ok">${escapeHtml(f.name)}</li>`).join("") + `</ul>`;
+  }
+  return html + warningsBlock(data.warnings);
+}
+
+let CACHE = null;
+
+async function loadCache() {
+  const status = document.getElementById("cache-status");
+  status.textContent = "listing…";
+  try {
+    CACHE = await api("/api/cache");
+    status.textContent = "";
+    renderCache();
+  } catch (e) {
+    status.textContent = "";
+    document.getElementById("cache-out").innerHTML = `<p class="bad">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderCache() {
+  if (!CACHE) return;
+  const buildsOnly = document.getElementById("cache-builds-only").checked;
+  // Shared folders first: legacy and the others are few, and matter most.
+  const entries = CACHE.entries
+    .filter(e => !buildsOnly || e.is_build)
+    .slice()
+    .sort((a, b) => (a.is_build === b.is_build) ? 0 : (a.is_build ? 1 : -1));
+
+  let html = `<p class="muted">${escapeHtml(CACHE.source)} — ${CACHE.build_count} build folders,
+    ${CACHE.shared_count} shared, ${escapeHtml(CACHE.total_size || "size unknown")} in total</p>`;
+
+  html += `<table><tr><th>Entry</th><th>Size</th><th>Modified</th><th></th></tr>` +
+    entries.map(e => {
+      const remove = e.is_build
+        ? `<button class="ghost" onclick="askDelete('${escapeHtml(e.name)}', '${escapeHtml(e.size || "")}')">remove…</button>`
+        : `<span class="muted">shared — not removable</span>`;
+      const actions =
+        `<button class="ghost" onclick="cacheDetail('${escapeHtml(e.name)}')">packages</button> ${remove}`;
+      return `<tr><td>${escapeHtml(e.name)}</td><td>${escapeHtml(e.size || "—")}</td>
+        <td class="muted">${escapeHtml(e.modified || "—")}</td><td>${actions}</td></tr>
+        <tr id="row-${escapeHtml(e.name)}"><td colspan="4" style="padding:0"></td></tr>`;
+    }).join("") + `</table>`;
+
+  document.getElementById("cache-out").innerHTML = html + warningsBlock(CACHE.warnings);
+}
+
+async function cacheDetail(buildId) {
+  const cell = document.querySelector(`#row-${CSS.escape(buildId)} td`);
+  cell.innerHTML = `<p class="muted" style="padding:8px 10px">reading…</p>`;
+  try {
+    const detail = await api("/api/cache/detail?build_id=" + encodeURIComponent(buildId));
+    if (detail.images && detail.images.length) {
+      cell.innerHTML = renderImages(detail);
+      return;
+    }
+    const byCodename = {};
+    for (const deb of detail.debians) (byCodename[deb.codename] ||= []).push(deb);
+    cell.innerHTML = `<div class="body" style="padding:10px 14px">
+      <p class="muted">versions: ${detail.versions.map(escapeHtml).join(", ") || "none"}</p>` +
+      Object.entries(byCodename).map(([codename, debs]) =>
+        `<details class="group"><summary>${escapeHtml(codename)}
+           <span class="tally"><span class="pill">${debs.length} packages</span></span></summary>
+         <div class="body"><table><tr><th>Package</th><th>Version</th><th>Arch</th></tr>` +
+          debs.map(d => `<tr><td>${escapeHtml(d.package || d.filename)}</td>
+            <td>${escapeHtml(d.version || "—")}</td><td>${escapeHtml(d.arch)}</td></tr>`).join("") +
+        `</table></div></details>`).join("") + `</div>`;
+  } catch (e) {
+    cell.innerHTML = `<p class="bad" style="padding:8px 10px">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+/// docker-cache: one tarball per docker tag, grouped by image.
+function renderImages(detail) {
+  const byImage = {};
+  for (const image of detail.images) (byImage[image.image] ||= []).push(image);
+
+  return `<div class="body" style="padding:10px 14px">
+    <p class="muted">${detail.images.length} image tarballs across
+      ${Object.keys(byImage).length} images — restored as
+      &lt;image&gt;:&lt;tag&gt;</p>` +
+    Object.entries(byImage).sort((a, b) => b[1].length - a[1].length).map(([image, items]) => {
+      const bytes = items.reduce((sum, i) => sum + (i.size_bytes || 0), 0);
+      return `<details class="group"><summary>${escapeHtml(image)}
+        <span class="tally"><span class="pill">${items.length} tags</span>
+        <span class="pill">${escapeHtml(humanBytes(bytes))}</span></span></summary>
+        <div class="body"><table>
+          <tr><th>Commit</th><th>Codename</th><th>Variant</th><th>Arch</th><th>Size</th><th>Modified</th></tr>` +
+          items.sort((a, b) => (b.size_bytes || 0) - (a.size_bytes || 0)).map(i =>
+            `<tr><td>${escapeHtml(i.commit || "—")}</td>
+                 <td>${escapeHtml(i.codename || "—")}</td>
+                 <td>${escapeHtml(i.variant || "—")}</td>
+                 <td>${escapeHtml(i.arch || "amd64")}</td>
+                 <td>${escapeHtml(i.size || "—")}</td>
+                 <td class="muted">${escapeHtml(i.modified || "—")}</td></tr>`).join("") +
+        `</table></div></details>`;
+    }).join("") + `</div>`;
+}
+
+function humanBytes(bytes) {
+  const units = ["B", "K", "M", "G", "T"];
+  let value = bytes, unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+  return unit === 0 ? `${bytes}B` : `${value.toFixed(1)}${units[unit]}`;
+}
+
+function askDelete(buildId, size) {
+  const cell = document.querySelector(`#row-${CSS.escape(buildId)} td`);
+  cell.innerHTML = `<div class="note" style="margin:8px 14px">
+    <strong>Remove ${escapeHtml(buildId)}?</strong>
+    ${size ? ` This frees ${escapeHtml(size)}.` : ""}
+    <p class="muted">This deletes from the shared CI cache that Buildkite reads.
+      Type the UUID to confirm.</p>
+    <div class="actions">
+      <input id="confirm-${escapeHtml(buildId)}" placeholder="${escapeHtml(buildId)}" style="max-width:340px">
+      <button class="ghost" onclick="runDelete('${escapeHtml(buildId)}', true)">Dry run</button>
+      <button class="go" onclick="runDelete('${escapeHtml(buildId)}', false)">Remove</button>
+    </div>
+    <div id="delete-out-${escapeHtml(buildId)}"></div></div>`;
+}
+
+async function runDelete(buildId, dryRun) {
+  const out = document.getElementById("delete-out-" + buildId);
+  const typed = document.getElementById("confirm-" + buildId).value.trim();
+  out.innerHTML = `<p class="muted">${dryRun ? "checking…" : "removing…"}</p>`;
+  try {
+    const report = await api("/api/cache/delete", {
+      method: "POST",
+      body: JSON.stringify({ build_id: buildId, confirm_build_id: typed, dry_run: dryRun }),
+    });
+    const guards = `<ul>` + report.guards.map(g =>
+      `<li class="${g.passed ? "ok" : "bad"}">${escapeHtml(g.name)} — ${escapeHtml(g.detail)}</li>`)
+      .join("") + `</ul>`;
+    out.innerHTML = `<p class="${report.deleted ? "ok" : report.guards.every(g => g.passed) ? "warn" : "bad"}">
+      ${escapeHtml(report.message)}</p>${guards}`;
+    if (report.deleted) loadCache();
+  } catch (e) {
+    out.innerHTML = `<p class="bad">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+let PIPELINES = [];
+let LAST_ENV = null;
+let LAST_REQUEST = null;
+
+async function loadPipelines() {
+  const data = await api("/api/pipelines");
+  PIPELINES = data.pipelines || [];
+  document.getElementById("pipeline-key").innerHTML = PIPELINES.map(p =>
+    `<option value="${escapeHtml(p.key)}">${escapeHtml(p.label)}</option>`).join("");
+  renderPipelineForm();
+}
+
+function currentPipeline() {
+  const key = document.getElementById("pipeline-key").value;
+  return PIPELINES.find(p => p.key === key);
+}
+
+/// The form is drawn from the declaration, so a new pipeline needs no code.
+function renderPipelineForm() {
+  const spec = currentPipeline();
+  if (!spec) return;
+  document.getElementById("pipeline-description").textContent = spec.description || "";
+  document.getElementById("pipeline-branch").value = spec.default_branch || "";
+  document.getElementById("pipeline-out").innerHTML = "";
+
+  const always = Object.entries(spec.always_env || {})
+    .map(([k, v]) => `${k}=${v}`).join(", ");
+
+  document.getElementById("pipeline-fields").innerHTML =
+    (spec.fields || []).map(field => {
+      const id = "field-" + field.name;
+      const required = field.required ? "required" : "";
+      let control;
+      if (field.kind === "select") {
+        control = `<select id="${escapeHtml(id)}">` + (field.options || []).map(option =>
+          `<option ${option === field.default ? "selected" : ""}>${escapeHtml(option)}</option>`)
+          .join("") + `</select>`;
+      } else if (field.kind === "checkbox") {
+        control = `<input type="checkbox" id="${escapeHtml(id)}" style="width:auto">`;
+      } else {
+        control = `<input id="${escapeHtml(id)}" ${required}
+          value="${escapeHtml(field.default || "")}"
+          placeholder="${escapeHtml(field.placeholder || "")}">`;
+      }
+      const help = field.help ? `<div class="muted" style="grid-column:2">${escapeHtml(field.help)}</div>` : "";
+      return `<div class="row"><label for="${escapeHtml(id)}">${escapeHtml(field.name)}
+        ${field.required ? '<span class="bad">*</span>' : ""}</label>${control}</div>${help}`;
+    }).join("") +
+    (always ? `<p class="muted">always set: ${escapeHtml(always)}</p>` : "");
+}
+
+function pipelineRequest() {
+  const spec = currentPipeline();
+  const values = {};
+  for (const field of spec.fields || []) {
+    const element = document.getElementById("field-" + field.name);
+    if (!element) continue;
+    values[field.name] = field.kind === "checkbox"
+      ? (element.checked ? "1" : "")
+      : element.value.trim();
+  }
+  return {
+    pipeline: spec.key,
+    branch: document.getElementById("pipeline-branch").value.trim(),
+    values,
+  };
+}
+
+async function checkPipeline(event) {
+  event.preventDefault();
+  const status = document.getElementById("pipeline-status");
+  const out = document.getElementById("pipeline-out");
+  LAST_REQUEST = pipelineRequest();
+
+  status.textContent = "checking…"; out.innerHTML = "";
+  try {
+    const result = await api("/api/pipelines/validate",
+      { method: "POST", body: JSON.stringify(LAST_REQUEST) });
+    status.textContent = "";
+    LAST_ENV = result.env;
+    out.innerHTML = renderValidation(result);
+  } catch (e) {
+    status.textContent = ""; out.innerHTML = `<p class="bad">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderValidation(result) {
+  const failed = result.checks.filter(c => c.outcome === "failed");
+  const html = `<h4>Checks</h4><ul class="checks">` + result.checks.map(c => {
+    const className = c.outcome === "passed" ? "ok" : c.outcome === "failed" ? "bad" : "warn";
+    return `<li class="${className}"><strong>${escapeHtml(c.field)}</strong> — ${escapeHtml(c.detail)}</li>`;
+  }).join("") + `</ul>` +
+  `<h4>Environment that would be sent</h4><pre>${escapeHtml(
+     Object.entries(result.env).map(([k, v]) => `${k}: "${v}"`).join("\n"))}</pre>` +
+  `<p class="muted">Pipeline: ${escapeHtml(result.slug)} · branch ${escapeHtml(result.branch)}</p>`;
+
+  if (failed.length) {
+    return html + `<p class="bad">${failed.length} check(s) failed. Fix them before creating a build.</p>`;
+  }
+  return html + `<div class="actions">
+      <button class="go" onclick="triggerPipeline()">Create the build</button>
+      <span class="muted">This creates a real Buildkite build.</span>
+    </div><div id="pipeline-result"></div>`;
+}
+
+async function triggerPipeline() {
+  const out = document.getElementById("pipeline-result");
+  out.innerHTML = `<p class="muted">creating…</p>`;
+  try {
+    const result = await api("/api/pipelines/trigger",
+      { method: "POST", body: JSON.stringify({ ...LAST_REQUEST, confirm: true }) });
+    if (result.checks) {
+      out.innerHTML = `<p class="bad">The server re-checked and refused.</p>` + renderValidation(result);
+      return;
+    }
+    out.innerHTML = `<p class="ok">Build #${result.number} created.
+      <a href="${escapeHtml(result.web_url)}" target="_blank" rel="noreferrer">Open it in Buildkite</a></p>`;
+    window.open(result.web_url, "_blank", "noreferrer");
+  } catch (e) {
+    out.innerHTML = `<p class="bad">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function copyEnv() {
+  const params = LAST_ENV || null;
+  if (!params) {
+    document.getElementById("pipeline-status").textContent = "check the parameters first";
+    return;
+  }
+  const text = "env:\n" + Object.entries(params)
+    .map(([k, v]) => `  ${k}: "${v}"`).join("\n");
+  navigator.clipboard.writeText(text).then(
+    () => { document.getElementById("pipeline-status").textContent = "copied"; },
+    () => { document.getElementById("pipeline-status").textContent = "could not copy"; });
+}
+
+/// A lookup can be linked to: ?commit=8c0c2e6&channel=stable runs on load.
+function prefillFromUrl() {
+  const parameters = new URLSearchParams(location.search);
+  const subject = parameters.get("commit") || parameters.get("version");
+  if (!subject) return;
+  document.getElementById("commit").value = subject;
+  for (const [name, id] of [["channel", "channel"], ["codenames", "codenames"],
+                            ["repo_path", "repo_path"]]) {
+    const value = parameters.get(name);
+    if (value) document.getElementById(id).value = value;
+  }
+  showTab("inventory");
+  loadInventory(new Event("submit"));
+}
+
+showTab(tabFromHash());
+loadSchema().then(loadPipelines).then(prefillFromUrl).catch(e => {
+  document.getElementById("project").textContent = "could not load the schema: " + e.message;
+});
+</script>
+</body>
+</html>

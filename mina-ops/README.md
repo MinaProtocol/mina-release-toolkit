@@ -130,6 +130,122 @@ would make a long-standing failure look new.
 Without `--branch`, release branches are mixed into the comparison and
 failures appear to come and go. The project default is `develop`.
 
+## The console
+
+```bash
+mina-ops serve            # prints http://127.0.0.1:7777/?t=<token>
+```
+
+Four tabs over the same API: **Inventory** for a commit, **Nightly** for what
+broke tonight, **Cache** for what is on the storage box, and **Pipelines** for
+starting a build.
+
+The token is kept in `~/.local/state/mina-ops/console-token`, owner only, so
+one bookmark keeps working. `--rotate-token` replaces it; `--ephemeral-token`
+mints one per run instead.
+
+### Pipelines
+
+A pipeline is **declared, not coded**: its slug, its fields and their rules
+live in the project registry, so adding one is a YAML edit.
+
+```yaml
+- key: single-job
+  label: Single job
+  slug: mina-single-job
+  always_env: { GIT_LFS_SKIP_SMUDGE: "1" }
+  fields:
+    - name: JOB_NAME
+      label: Job name
+      required: true
+      placeholder: HardForkTestLegacy
+```
+
+Each field becomes an environment variable. `kind` is `text`, `select` or
+`checkbox`; `required`, `options`, `pattern`, `default`, `placeholder` and
+`help` do what they say. An unticked checkbox is *absent* rather than empty,
+because the pipelines' own scripts test for emptiness to decide.
+
+Seven ship by default — hardfork, docker, debian, stable, nightly,
+all-configurations and single-job. Most take only a branch, which is what
+their real builds show.
+
+A declaration can say "one of these values" or "matches this pattern", but not
+"this URL exists". A pipeline may therefore name built-in deep checks:
+
+```yaml
+checks: hardfork
+```
+
+which adds, for hardfork: the config URL must resolve, the referenced build
+must still hold packages in the CI cache, the precomputed block prefix must
+exist, the codenames must be ones the pipeline's Dhall accepts, and the
+timestamp must be UTC. Where a deep check and a declared check name the same
+field, the deeper one replaces it, so each field is reported once.
+
+The tab then shows exactly what would be sent. "Copy as env block" gives you
+that text if you would rather start the build from the Buildkite UI — the
+console never becomes the only way in.
+
+Creating a build requires an explicit confirmation, and the server re-runs
+every check on the confirmed request rather than trusting the browser's copy.
+Afterwards it hands you Buildkite's URL and sends you there: the console
+renders no build state.
+
+### Why a page on localhost needs guarding
+
+Any page open in the same browser can send requests to a localhost port.
+Three rules close that off:
+
+1. The listener binds `127.0.0.1`, never `0.0.0.0`.
+2. Every request must carry a token generated at startup and changed on every
+   start. The page reads it from the URL it was opened with and sends it in a
+   header, which a cross-origin page cannot set without a preflight this
+   server never grants.
+3. The `Host` header must be a loopback address, which is what stops DNS
+   rebinding.
+
+No CORS headers are sent, deliberately.
+
+## The cache tab
+
+The CI cache is where Mina's packages actually live, and it grows by roughly
+200 GB a day. The tab lists every entry with its size and date — the whole
+cache in about a second, because `du --max-depth=1` and `ls -lt` each walk only
+the top level — and expanding a build shows its packages and versions.
+
+Three shapes live in that cache, and the tab reads all of them:
+
+| Entry | Holds | Layout |
+| --- | --- | --- |
+| `<build-uuid>` | packages a build produced | `debians/<codename>/<pkg>_<version>_<arch>.deb` |
+| `legacy` | restored packages kept outside any build | the same, and it is the folder people most often open |
+| `debs` | a few packages per codename | `<codename>/…`, with no `debians` level |
+| `docker-cache` | image tarballs, 705 GB of them | `<image>/<commit>-<codename>[-<variant>][-<arch>].tar.zst` |
+
+Expanding `docker-cache` groups the tarballs by image with their sizes, and
+splits each tag into commit, codename, variant and architecture. Unrecognised
+parts stay in the variant rather than being guessed at — a tag carrying a
+doubled network shows exactly that, because tidying it away would hide the bug
+that produced it.
+
+Removal is the one destructive operation in this tool, and it acts on the
+cache Buildkite reads from. Four guards run **on the server**, in this order,
+and all four must pass:
+
+| Guard | Refuses |
+| --- | --- |
+| is a build folder | anything that is not a build UUID, so `legacy`, `docker-cache`, `debs` and `test_data` can never be removed |
+| confirmation matches | a request that does not type the UUID back |
+| not in use by Buildkite | a build Buildkite is running, scheduling or creating — and also a request where that could not be checked, because not knowing is not permission |
+| exists in the cache | a folder that is already gone |
+
+A request with no `dry_run` field is a dry run. Deletions are appended to
+`~/.local/state/mina-ops/deletions.log`.
+
+Bulk pruning is deliberately absent. `buildkite-cache-manager prune` does that
+against a mounted cache, where a mistake is easier to notice than in a browser.
+
 ## As an MCP server
 
 `mina-ops mcp` serves the same queries over MCP on stdin and stdout, so an
