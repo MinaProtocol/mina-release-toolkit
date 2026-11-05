@@ -2,13 +2,13 @@
 
 Carries bytes that are not valid UTF-8 through `jq`.
 
-Token symbols and zkApp URIs are arbitrary bytes, so a ledger or a runtime
-config that the daemon writes is not always valid UTF-8. `jq` replaces each
-invalid byte with U+FFFD. The ledger then has a different hash, and a hardfork
-ledger built from it is wrong.
+Mina allows arbitrary bytes in some text fields, so its JSON is not always valid
+UTF-8. Many tools process this JSON with `jq`, and each such step can change the
+content: `jq` replaces each invalid byte with U+FFFD, but these bytes must stay
+exact.
 
-Use this tool for each `jq` command that writes a ledger or a config that
-contains accounts. A read-only `jq -r` on a hash or a slot does not need it.
+Use this tool for each `jq` command that writes such JSON. A read-only `jq -r` on
+a field that is always valid UTF-8 does not need it.
 
 ## Usage
 
@@ -36,7 +36,8 @@ through `encode`. For this reason:
 
 - JSON comes from stdin or from `--slurpfile`.
 - An argument after the filter is an error, because jq would read it as a file.
-- `--rawfile`, `-f`, `--from-file`, `--args`, `--jsonargs` and `--` are errors.
+- `--rawfile`, `-f`, `--from-file`, `--args` and `--jsonargs` are errors.
+  `src/jq.rs` has the list of rules.
 - With `-n`, the tool does not read stdin.
 
 Exit codes: the exit code of jq, `1` for a failure, `2` for a usage error.
@@ -54,7 +55,7 @@ mina-json-bytes jq 'del(.genesis)' < config.json > out.tmp && mv out.tmp out.jso
 - `encode` stops with an error if the input contains the text `__MINA_BYTE_`.
   Without this rule, `decode` could not tell that text from a token.
 - A jq filter sees the token and not the byte. For example, `length` or `test`
-  on a token symbol gives a result for the token.
+  on such a field gives a result for the token.
 - jq still changes the format of its output: whitespace, escapes such as
   `é`, and the precision of numbers above 2^53. For a copy that must be
   identical except for one removed part, do not use jq.

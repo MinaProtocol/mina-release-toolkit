@@ -1,54 +1,58 @@
-use mina_json_bytes::{decode, encode, jq};
+use clap::{Args, Parser, Subcommand};
+use mina_json_bytes::jq::JqInvocation;
+use mina_json_bytes::{Decoder, Encoder, Result, Transcode};
 use std::ffi::OsString;
 use std::io;
 use std::process::ExitCode;
 
-const USAGE: &str = "\
-Carry bytes that are not valid UTF-8 through jq.
+/// Carry bytes that are not valid UTF-8 through jq.
+#[derive(Parser)]
+#[command(name = "mina-json-bytes", version)]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
 
-Usage:
-  mina-json-bytes encode < input > output
-  mina-json-bytes decode < input > output
-  mina-json-bytes jq [jq options] <filter> < input > output
+#[derive(Subcommand)]
+enum Command {
+    /// Replace each invalid byte of stdin with the token __MINA_BYTE_xx__
+    Encode,
+    /// Replace each token of stdin with its byte
+    Decode,
+    /// Run encode | jq | decode, and return the exit code of jq
+    Jq(JqArgs),
+}
 
-encode replaces each invalid byte with the token __MINA_BYTE_xx__, and decode
-replaces each token with its byte. jq does encode | jq | decode. It takes JSON
-from stdin or from --slurpfile only, and returns the exit code of jq.
+#[derive(Args)]
+struct JqArgs {
+    /// The jq options and filter. JSON comes from stdin or --slurpfile only
+    #[arg(
+        value_name = "JQ_ARGUMENT",
+        required = true,
+        trailing_var_arg = true,
+        allow_hyphen_values = true
+    )]
+    arguments: Vec<OsString>,
+}
 
-Exit codes: 1 for a failure, 2 for a usage error, or the exit code of jq.
-";
-
-fn main() -> ExitCode {
-    let mut args = std::env::args_os().skip(1);
-    let command = args.next();
-    let rest: Vec<OsString> = args.collect();
-    let result = match (command.as_ref().and_then(|c| c.to_str()), rest.is_empty()) {
-        (Some("--help" | "-h"), _) => {
-            print!("{USAGE}");
-            return ExitCode::SUCCESS;
+impl Command {
+    /// Runs the command and returns the exit code.
+    fn run(self) -> Result<u8> {
+        match self {
+            Self::Encode => Encoder::new(io::stdout().lock()).run(io::stdin().lock())?,
+            Self::Decode => Decoder::new(io::stdout().lock()).run(io::stdin().lock())?,
+            Self::Jq(args) => return JqInvocation::parse(&args.arguments)?.run(),
         }
-        (Some("--version" | "-V"), _) => {
-            println!("mina-json-bytes {}", env!("CARGO_PKG_VERSION"));
-            return ExitCode::SUCCESS;
-        }
-        (Some("encode"), true) => encode(io::stdin().lock(), io::stdout().lock()).map(|()| 0),
-        (Some("decode"), true) => decode(io::stdin().lock(), io::stdout().lock()).map(|()| 0),
-        (Some("jq"), _) => match jq::plan(&rest) {
-            Ok(plan) => jq::run(plan),
-            Err(message) => return usage_error(&message),
-        },
-        _ => return usage_error("expected encode, decode or jq"),
-    };
-    match result {
-        Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
-        Err(error) => {
-            eprintln!("mina-json-bytes: {error}");
-            ExitCode::from(1)
-        }
+        Ok(0)
     }
 }
 
-fn usage_error(message: &str) -> ExitCode {
-    eprintln!("mina-json-bytes: {message}\n\n{USAGE}");
-    ExitCode::from(2)
+fn main() -> ExitCode {
+    match Cli::parse().command.run() {
+        Ok(code) => ExitCode::from(code),
+        Err(error) => {
+            eprintln!("mina-json-bytes: {error}");
+            ExitCode::from(error.exit_code())
+        }
+    }
 }

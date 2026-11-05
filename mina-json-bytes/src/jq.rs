@@ -1,161 +1,306 @@
-//! `mina-json-bytes jq`: run jq with the input encoded and the output decoded.
+//! Run jq with the input encoded and the output decoded.
 //!
 //! jq opens its file arguments itself, so an input file given to jq directly
-//! does not go through [`encode`](crate::encode). To make that impossible, the
-//! arguments are checked here: JSON comes from stdin or from `--slurpfile`,
+//! does not go through the [`Encoder`]. To make that impossible, each argument
+//! is checked against [`RULES`]: JSON comes from stdin or from `--slurpfile`,
 //! which is encoded to a temporary file, and any other file input is an error.
 
-use crate::{decode, encode};
+use crate::error::{Error, Result, UsageError};
+use crate::{Decoder, Encoder, Transcode};
 use std::ffi::{OsStr, OsString};
-use std::fs::{self, DirBuilder, File};
-use std::io::{self, BufWriter};
-use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::DirBuilderExt;
+use std::fs::File;
+use std::io;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::thread;
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::slice;
+use std::thread::{self, JoinHandle};
 
-/// The options that take values, with the number of values.
-const VALUE_OPTIONS: &[(&str, usize)] =
-    &[("--arg", 2), ("--argjson", 2), ("--indent", 1), ("-L", 1)];
+/// What a jq option means for this wrapper.
+#[derive(Clone, Copy)]
+enum OptionKind {
+    /// Takes this number of values, none of them a JSON input.
+    Values(usize),
+    /// Takes a name and a JSON file, which must be encoded first.
+    JsonFile,
+    /// jq reads no JSON from stdin.
+    NoStdin,
+    /// Gives jq input that this wrapper cannot encode.
+    Unsupported,
+}
 
-/// The options that give jq input which this wrapper cannot encode.
-const REJECTED_OPTIONS: &[&str] = &["--args", "--jsonargs", "--from-file", "--rawfile", "--"];
+/// How to handle one jq option. An option with no rule takes no value.
+struct OptionRule {
+    name: &'static str,
+    kind: OptionKind,
+}
 
+impl OptionRule {
+    const fn new(name: &'static str, kind: OptionKind) -> Self {
+        Self { name, kind }
+    }
+}
+
+const RULES: &[OptionRule] = &[
+    OptionRule::new("--arg", OptionKind::Values(2)),
+    OptionRule::new("--argjson", OptionKind::Values(2)),
+    OptionRule::new("--indent", OptionKind::Values(1)),
+    OptionRule::new("-L", OptionKind::Values(1)),
+    OptionRule::new("--slurpfile", OptionKind::JsonFile),
+    OptionRule::new("-n", OptionKind::NoStdin),
+    OptionRule::new("--null-input", OptionKind::NoStdin),
+    OptionRule::new("--rawfile", OptionKind::Unsupported),
+    OptionRule::new("--args", OptionKind::Unsupported),
+    OptionRule::new("--jsonargs", OptionKind::Unsupported),
+    OptionRule::new("-f", OptionKind::Unsupported),
+    OptionRule::new("--from-file", OptionKind::Unsupported),
+    OptionRule::new("--", OptionKind::Unsupported),
+];
+
+/// The rules of an option. `-nc` has the rules of both `-n` and `-c`.
+fn rules_of(option: &str) -> Vec<&'static OptionRule> {
+    let names: Vec<String> = if option.starts_with("--") {
+        vec![option.to_string()]
+    } else {
+        option.chars().skip(1).map(|c| format!("-{c}")).collect()
+    };
+    let has_rule = |rule: &&OptionRule| names.iter().any(|name| name == rule.name);
+    RULES.iter().filter(has_rule).collect()
+}
+
+fn is_option(argument: &OsStr) -> bool {
+    argument.len() > 1 && argument.as_encoded_bytes().starts_with(b"-")
+}
+
+/// One argument of the jq command.
 #[derive(Debug, PartialEq)]
-pub struct Plan {
-    pub args: Vec<OsString>,
-    /// Indexes in `args` of the files to encode.
-    pub files: Vec<usize>,
-    pub null_input: bool,
+enum JqArgument {
+    /// Passed to jq as it is.
+    Plain(OsString),
+    /// A JSON file, which jq gets in encoded form.
+    JsonFile(PathBuf),
 }
 
-/// Checks the jq arguments and finds the files to encode.
-pub fn plan(args: &[OsString]) -> Result<Plan, String> {
-    let mut plan = Plan {
-        args: Vec::new(),
-        files: Vec::new(),
-        null_input: false,
-    };
-    let mut have_filter = false;
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        plan.args.push(arg.clone());
-        let text = arg.to_string_lossy();
-        if text == "--slurpfile" {
-            plan.args
-                .push(value(&mut iter, "--slurpfile")?.to_os_string());
-            plan.args
-                .push(value(&mut iter, "--slurpfile")?.to_os_string());
-            plan.files.push(plan.args.len() - 1);
-        } else if let Some((name, count)) = VALUE_OPTIONS.iter().find(|(name, _)| *name == text) {
-            for _ in 0..*count {
-                plan.args.push(value(&mut iter, name)?.to_os_string());
+/// A checked jq command.
+#[derive(Debug, Default, PartialEq)]
+pub struct JqInvocation {
+    arguments: Vec<JqArgument>,
+    /// True if jq reads no JSON from stdin (`--null-input`). stdin is then not
+    /// connected, because it can stay open forever.
+    no_stdin: bool,
+    has_filter: bool,
+}
+
+impl JqInvocation {
+    /// Checks the jq arguments.
+    pub fn parse(arguments: &[OsString]) -> Result<Self> {
+        let mut invocation = Self::default();
+        let mut arguments = arguments.iter();
+        while let Some(argument) = arguments.next() {
+            if is_option(argument) {
+                invocation.add_option(argument, &mut arguments)?;
+            } else {
+                invocation.add_positional(argument)?;
             }
-        } else if REJECTED_OPTIONS.contains(&text.as_ref()) {
-            return Err(format!("{text} is not supported: use stdin or --slurpfile"));
-        } else if let Some(long) = text.strip_prefix("--") {
-            plan.null_input |= long == "null-input";
-        } else if let Some(short) = text.strip_prefix('-').filter(|short| !short.is_empty()) {
-            if short.contains('f') {
-                return Err(format!("{text} is not supported: give the filter here"));
-            }
-            plan.null_input |= short.contains('n');
-        } else if !have_filter {
-            have_filter = true;
+        }
+        if invocation.has_filter {
+            Ok(invocation)
         } else {
-            return Err(format!(
-                "{text}: jq would read this file without encoding it: \
-                 use stdin or --slurpfile"
-            ));
+            Err(UsageError::NoFilter.into())
         }
     }
-    if have_filter {
-        Ok(plan)
-    } else {
-        Err("no jq filter".to_string())
+
+    fn add_plain(&mut self, argument: &OsStr) {
+        self.arguments.push(JqArgument::Plain(argument.to_owned()));
     }
-}
 
-fn value<'a>(iter: &mut std::slice::Iter<'a, OsString>, option: &str) -> Result<&'a OsStr, String> {
-    iter.next()
-        .map(OsString::as_os_str)
-        .ok_or_else(|| format!("{option} needs more values"))
-}
+    /// The only positional argument is the filter, because any other one is a
+    /// file that jq would read without encoding.
+    fn add_positional(&mut self, argument: &OsStr) -> Result<()> {
+        if self.has_filter {
+            let argument = argument.to_string_lossy().into_owned();
+            return Err(UsageError::FileArgument { argument }.into());
+        }
+        self.has_filter = true;
+        self.add_plain(argument);
+        Ok(())
+    }
 
-/// A private directory for the encoded files, removed on drop.
-struct TempDir(PathBuf);
+    fn add_option(
+        &mut self,
+        option: &OsStr,
+        arguments: &mut slice::Iter<'_, OsString>,
+    ) -> Result<()> {
+        self.add_plain(option);
+        let text = option.to_string_lossy();
+        for rule in rules_of(&text) {
+            self.apply(rule, arguments)?;
+        }
+        Ok(())
+    }
 
-impl TempDir {
-    fn new() -> io::Result<Self> {
-        let parent = std::env::temp_dir();
-        let pid = std::process::id();
-        for attempt in 0..100 {
-            let path = parent.join(format!("mina-json-bytes.{pid}.{attempt}"));
-            match DirBuilder::new().mode(0o700).create(&path) {
-                Ok(()) => return Ok(Self(path)),
-                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-                Err(error) => return Err(error),
+    fn apply(
+        &mut self,
+        rule: &OptionRule,
+        arguments: &mut slice::Iter<'_, OsString>,
+    ) -> Result<()> {
+        let mut value = || {
+            let option = rule.name.to_string();
+            arguments.next().ok_or(UsageError::MissingValue { option })
+        };
+        match rule.kind {
+            OptionKind::Values(count) => {
+                for _ in 0..count {
+                    let plain = value()?;
+                    self.add_plain(plain);
+                }
+            }
+            OptionKind::JsonFile => {
+                let name = value()?;
+                let file = value()?;
+                self.add_plain(name);
+                self.arguments.push(JqArgument::JsonFile(file.into()));
+            }
+            OptionKind::NoStdin => self.no_stdin = true,
+            OptionKind::Unsupported => {
+                let option = rule.name.to_string();
+                return Err(UsageError::UnsupportedOption { option }.into());
             }
         }
-        Err(io::Error::other("cannot create a temporary directory"))
+        Ok(())
     }
 
-    fn path(&self) -> &Path {
-        &self.0
+    /// Runs jq, with its output on stdout, and returns its exit code.
+    pub fn run(&self) -> Result<u8> {
+        let encoded_files = tempfile::Builder::new()
+            .prefix("mina-json-bytes")
+            .tempdir()?;
+        let arguments = self.encoded_arguments(encoded_files.path())?;
+        let mut jq = self.spawn(&arguments)?;
+        let feeder = feed_stdin(jq.stdin.take());
+        let stdout = jq.stdout.take().expect("stdout is piped");
+        let decoded = Decoder::new(io::stdout().lock()).run(stdout);
+        let status = jq.wait()?;
+        feeder.join().expect("the feeder thread does not panic")?;
+        decoded?;
+        let code = status.code().unwrap_or(1);
+        Ok(u8::try_from(code).unwrap_or(1))
+    }
+
+    /// The arguments for jq, after encoding each JSON file into `directory`.
+    fn encoded_arguments(&self, directory: &Path) -> Result<Vec<OsString>> {
+        let encode = |(index, argument): (usize, &JqArgument)| match argument {
+            JqArgument::Plain(plain) => Ok(plain.clone()),
+            JqArgument::JsonFile(file) => {
+                let target = directory.join(format!("{index}.json"));
+                encode_file(file, &target).map_err(|error| error.in_file(file))?;
+                Ok(target.into_os_string())
+            }
+        };
+        self.arguments.iter().enumerate().map(encode).collect()
+    }
+
+    fn spawn(&self, arguments: &[OsString]) -> Result<Child> {
+        let stdin = if self.no_stdin {
+            Stdio::null()
+        } else {
+            Stdio::piped()
+        };
+        Command::new("jq")
+            .args(arguments)
+            .stdin(stdin)
+            .stdout(Stdio::piped())
+            .spawn()
+            .map_err(Error::StartJq)
     }
 }
 
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
+fn encode_file(source: &Path, target: &Path) -> Result<()> {
+    Encoder::new(File::create(target)?).run(File::open(source)?)
 }
 
-fn with_path(context: &OsStr, error: io::Error) -> io::Error {
-    let name = String::from_utf8_lossy(context.as_bytes()).into_owned();
-    io::Error::new(error.kind(), format!("{name}: {error}"))
-}
-
-/// Runs jq and returns its exit code.
-pub fn run(mut plan: Plan) -> io::Result<i32> {
-    let temp = TempDir::new()?;
-    for (number, &index) in plan.files.iter().enumerate() {
-        let source = plan.args[index].clone();
-        let target = temp.path().join(format!("{number}.json"));
-        let input = File::open(&source).map_err(|error| with_path(&source, error))?;
-        let output = BufWriter::new(File::create(&target)?);
-        encode(input, output).map_err(|error| with_path(&source, error))?;
-        plan.args[index] = target.into_os_string();
-    }
-
-    // With --null-input jq does not need stdin, which can stay open forever.
-    let stdin = if plan.null_input {
-        Stdio::null()
-    } else {
-        Stdio::piped()
-    };
-    let mut child = Command::new("jq")
-        .args(&plan.args)
-        .stdin(stdin)
-        .stdout(Stdio::piped())
-        .spawn()
-        .map_err(|error| io::Error::new(error.kind(), format!("cannot start jq: {error}")))?;
-
-    let child_stdin = child.stdin.take();
-    let child_stdout = child.stdout.take().expect("stdout is piped");
-    let encoder = thread::spawn(move || match child_stdin {
-        Some(child_stdin) => match encode(io::stdin().lock(), child_stdin) {
+/// Encodes our stdin into the stdin of jq, in a thread: the main thread reads
+/// the output of jq at the same time, so that the two pipes cannot block.
+fn feed_stdin(jq_stdin: Option<ChildStdin>) -> JoinHandle<Result<()>> {
+    thread::spawn(move || {
+        let Some(jq_stdin) = jq_stdin else {
+            return Ok(());
+        };
+        match Encoder::new(jq_stdin).run(io::stdin().lock()) {
             // jq stopped reading. Its exit code tells the result.
-            Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+            Err(error) if error.is_broken_pipe() => Ok(()),
             result => result,
-        },
-        None => Ok(()),
-    });
+        }
+    })
+}
 
-    let decoded = decode(child_stdout, io::stdout().lock());
-    let status = child.wait()?;
-    encoder.join().expect("the encoder thread does not panic")?;
-    decoded?;
-    Ok(status.code().unwrap_or(1))
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(arguments: &[&str]) -> Result<JqInvocation> {
+        let arguments: Vec<OsString> = arguments.iter().map(OsString::from).collect();
+        JqInvocation::parse(&arguments)
+    }
+
+    fn is_usage_error(arguments: &[&str]) -> bool {
+        matches!(parse(arguments), Err(Error::Usage(_)))
+    }
+
+    fn plain(text: &str) -> JqArgument {
+        JqArgument::Plain(text.into())
+    }
+
+    #[test]
+    fn values_are_not_taken_for_the_filter_or_a_file() {
+        let parsed = parse(&["--arg", "a", "b", "--argjson", "c", "1", "."]).unwrap();
+        assert_eq!(parsed.arguments.len(), 7);
+        assert!(!parsed.no_stdin);
+    }
+
+    #[test]
+    fn slurpfile_keeps_its_name_and_marks_its_file() {
+        let parsed = parse(&["-n", "--slurpfile", "name", "file.json", "$name"]).unwrap();
+        assert_eq!(
+            parsed.arguments,
+            [
+                plain("-n"),
+                plain("--slurpfile"),
+                plain("name"),
+                JqArgument::JsonFile("file.json".into()),
+                plain("$name"),
+            ]
+        );
+    }
+
+    #[test]
+    fn null_input_in_any_form_needs_no_stdin() {
+        for option in ["-n", "--null-input", "-nc", "-cn"] {
+            assert!(parse(&[option, "."]).unwrap().no_stdin, "{option}");
+        }
+        assert!(!parse(&["-c", "."]).unwrap().no_stdin);
+    }
+
+    #[test]
+    fn inputs_that_cannot_be_encoded_are_usage_errors() {
+        for arguments in [
+            &[".", "ledger.json"][..],
+            &["--rawfile", "a", "ledger.json", "."],
+            &["--args", ".", "a"],
+            &["--jsonargs", ".", "a"],
+            &["-f", "filter.jq"],
+            &["-cf", "filter.jq"],
+            &["--from-file", "filter.jq"],
+            &["--", "."],
+        ] {
+            assert!(is_usage_error(arguments), "{arguments:?}");
+        }
+    }
+
+    #[test]
+    fn missing_parts_are_usage_errors() {
+        assert!(is_usage_error(&[]));
+        assert!(is_usage_error(&["-c"]));
+        assert!(is_usage_error(&["--arg", "a"]));
+        assert!(is_usage_error(&["--slurpfile", "a"]));
+    }
 }
