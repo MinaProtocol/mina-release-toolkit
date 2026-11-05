@@ -1,11 +1,11 @@
 # Multi-stage build for the Mina Release Toolkit.
 #
-# Stage 1 ("builder") compiles the four in-tree Rust binaries
+# Stage 1 ("builder") compiles the five Rust binaries
 # against a rust toolchain image. Stage 2 ("runtime") is a slim
 # Debian image with just the runtime deps each binary actually
 # needs at execution time (dpkg-deb/debsigs/gpg for deb-toolkit,
 # the AWS CLI for release-manager's S3 paths, ssh for
-# buildkite-cache-manager's Hetzner backend).
+# buildkite-cache-manager's Hetzner backend, jq for mina-json-bytes).
 #
 # Build:
 #     docker build -f packaging/Dockerfile -t mina-release-toolkit:dev .
@@ -14,6 +14,7 @@
 #     docker run --rm mina-release-toolkit:dev deb-toolkit --help
 #     docker run --rm mina-release-toolkit:dev release-manager --help
 #     docker run --rm mina-release-toolkit:dev mina-bench-upload --help
+#     docker run --rm mina-release-toolkit:dev mina-json-bytes --help
 #     docker run --rm mina-release-toolkit:dev buildkite-cache-manager --help
 
 # ----- 1. Builder ------------------------------------------------------
@@ -32,21 +33,23 @@ RUN apt-get update && \
         build-essential pkg-config libssl-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy each crate's source. We copy the four crates individually
+# Copy each crate's source. We copy the five crates individually
 # rather than the whole repo so unrelated changes (READMEs,
 # submodules we don't use here) don't bust this layer's cache.
 COPY release-manager           release-manager/
 COPY mina-bench-upload         mina-bench-upload/
+COPY mina-json-bytes           mina-json-bytes/
 COPY buildkite-cache-manager   buildkite-cache-manager/
 COPY deb-toolkit               deb-toolkit/
 
 # Each crate is its own standalone build (no workspace at the repo
-# root), so we cargo build each in turn. The three in-tree binaries
+# root), so we cargo build each in turn. The four in-tree binaries
 # use `--locked` against their committed Cargo.lock files; deb-toolkit
 # (a submodule) gitignores its Cargo.lock upstream so we let cargo
 # resolve fresh.
 RUN (cd release-manager         && cargo build --release --locked) && \
     (cd mina-bench-upload       && cargo build --release --locked) && \
+    (cd mina-json-bytes         && cargo build --release --locked) && \
     (cd buildkite-cache-manager && cargo build --release --locked) && \
     (cd deb-toolkit             && cargo build --release)
 
@@ -75,6 +78,8 @@ RUN apt-get update && \
         openssh-client rsync \
         # release-manager: dig, for the CDN invalidation path
         dnsutils \
+        # mina-json-bytes: the jq subcommand
+        jq \
         # generally useful for entrypoint and debugging
         bash curl && \
     rm -rf /var/lib/apt/lists/*
@@ -98,15 +103,16 @@ RUN apt-get update && \
     deb-s3 help | grep -q ' show ' && \
     deb-s3 --help > /dev/null
 
-# Copy the four release binaries into /usr/bin so they're on PATH.
+# Copy the five release binaries into /usr/bin so they're on PATH.
 COPY --from=builder /src/release-manager/target/release/release-manager           /usr/bin/release-manager
 COPY --from=builder /src/mina-bench-upload/target/release/mina-bench-upload       /usr/bin/mina-bench-upload
+COPY --from=builder /src/mina-json-bytes/target/release/mina-json-bytes           /usr/bin/mina-json-bytes
 COPY --from=builder /src/buildkite-cache-manager/target/release/buildkite-cache-manager /usr/bin/buildkite-cache-manager
 COPY --from=builder /src/deb-toolkit/target/release/deb-toolkit                   /usr/bin/deb-toolkit
 
 # OCI labels — picked up by GHCR / ghcr.io UI.
 LABEL org.opencontainers.image.title="Mina Release Toolkit"
-LABEL org.opencontainers.image.description="Bundle of deb-toolkit, release-manager, mina-bench-upload, and buildkite-cache-manager."
+LABEL org.opencontainers.image.description="Bundle of deb-toolkit, release-manager, mina-bench-upload, mina-json-bytes, and buildkite-cache-manager."
 LABEL org.opencontainers.image.source="https://github.com/MinaProtocol/mina-release-toolkit"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 

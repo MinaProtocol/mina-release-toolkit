@@ -38,6 +38,10 @@ coverage:
       paths:
         - mina-bench-upload/
       carryforward: true
+    mina-json-bytes:
+      paths:
+        - mina-json-bytes/
+      carryforward: true
     buildkite-cache-manager:
       paths:
         - buildkite-cache-manager/

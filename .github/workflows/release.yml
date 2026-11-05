@@ -58,7 +58,7 @@ jobs:
 
       - name: Install Rust + musl target
         # Static-linking against musl removes the glibc floor entirely:
-        # one binary that runs on any Linux of that arch. The four crates
+        # one binary that runs on any Linux of that arch. The five crates
         # already use rustls (no OpenSSL link), so musl Just Works.
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -70,6 +70,7 @@ jobs:
           workspaces: |
             release-manager
             mina-bench-upload
+            mina-json-bytes
             buildkite-cache-manager
             deb-toolkit
           # Cache key includes the target triple so the musl build's
@@ -96,7 +97,7 @@ jobs:
             echo "version=0.0.0~pr${{ github.event.number }}" >> "${GITHUB_OUTPUT}"
           fi
 
-      - name: Build the four release binaries (musl static)
+      - name: Build the five release binaries (musl static)
         # Fully static binaries — no glibc dependency, so a single .deb
         # per arch is installable on bullseye / focal / jammy / noble /
         # bookworm alike. The lock-file policy is the same as
@@ -108,6 +109,7 @@ jobs:
         run: |
           (cd release-manager         && cargo build --release --locked --target "$TARGET")
           (cd mina-bench-upload       && cargo build --release --locked --target "$TARGET")
+          (cd mina-json-bytes         && cargo build --release --locked --target "$TARGET")
           (cd buildkite-cache-manager && cargo build --release --locked --target "$TARGET")
           (cd deb-toolkit             && cargo build --release           --target "$TARGET")
 

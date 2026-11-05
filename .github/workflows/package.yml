@@ -6,6 +6,7 @@ on:
     paths:
       - 'release-manager/**'
       - 'mina-bench-upload/**'
+      - 'mina-json-bytes/**'
       - 'buildkite-cache-manager/**'
       - 'packaging/**'
       # deb-toolkit is a submodule: a version bump changes the gitlink at
@@ -23,6 +24,7 @@ on:
     paths:
       - 'release-manager/**'
       - 'mina-bench-upload/**'
+      - 'mina-json-bytes/**'
       - 'buildkite-cache-manager/**'
       - 'packaging/**'
       - 'deb-toolkit'
@@ -89,7 +91,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ---------------------------------------------------------------------------
-  # Debian package. Builds the four Rust binaries natively, then invokes
+  # Debian package. Builds the five Rust binaries natively, then invokes
   # deb-toolkit to assemble them into a single .deb. Uploads as a workflow
   # artifact always; attaches to GitHub Release on tag push.
   # ---------------------------------------------------------------------------
@@ -131,8 +133,8 @@ jobs:
           fi
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
 
-      - name: Build all four binaries
-        # The three in-tree crates ship a committed Cargo.lock and
+      - name: Build all five binaries
+        # The four in-tree crates ship a committed Cargo.lock and
         # build with `--locked`. The deb-toolkit submodule's upstream
         # gitignores its lock so we let cargo resolve fresh for that
         # one — `--locked` would fail with "cannot create the lock
@@ -140,6 +142,7 @@ jobs:
         run: |
           (cd release-manager         && cargo build --release --locked)
           (cd mina-bench-upload       && cargo build --release --locked)
+          (cd mina-json-bytes         && cargo build --release --locked)
           (cd buildkite-cache-manager && cargo build --release --locked)
           (cd deb-toolkit             && cargo build --release)
 

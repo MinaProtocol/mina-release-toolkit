@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a single .deb that bundles all four toolkit binaries.
+# Build a single .deb that bundles all five toolkit binaries.
 #
 # Eats our own dogfood: invokes `deb-toolkit` (one of the bundled
 # binaries) to produce the .deb. The CI workflow at
@@ -9,7 +9,7 @@
 # Usage:
 #   packaging/build-deb.sh <version> <output_dir>
 #
-# Expects the four release binaries to already exist at:
+# Expects the five release binaries to already exist at:
 #   <crate>/target/release/<crate-name>
 # (Run `cargo build --release` in each crate first, or use the
 # `packaging/build-binaries.sh` helper.)
@@ -33,7 +33,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # When CARGO_TARGET is set (e.g. `x86_64-unknown-linux-musl` for a
 # static glibc-free build), cargo places its output under
 # `target/<TRIPLE>/release/` instead of the default `target/release/`.
-# We follow the same convention for all four crates so a single env
+# We follow the same convention for all five crates so a single env
 # var swaps "default native build" for "musl static build" without
 # changing any other code.
 TARGET_SUBDIR="release"
@@ -68,6 +68,7 @@ chmod 0755 "${STAGING}"
 
 install -D -m 0755 "$(bin_path release-manager release-manager)"                 "${STAGING}/usr/bin/release-manager"
 install -D -m 0755 "$(bin_path mina-bench-upload mina-bench-upload)"             "${STAGING}/usr/bin/mina-bench-upload"
+install -D -m 0755 "$(bin_path mina-json-bytes mina-json-bytes)"                 "${STAGING}/usr/bin/mina-json-bytes"
 install -D -m 0755 "$(bin_path buildkite-cache-manager buildkite-cache-manager)" "${STAGING}/usr/bin/buildkite-cache-manager"
 install -D -m 0755 "${DEB_TOOLKIT_BIN}"                                          "${STAGING}/usr/bin/deb-toolkit"
 

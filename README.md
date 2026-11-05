@@ -24,6 +24,7 @@ own `README.md` is the detailed reference.
 | [`release-manager/`](release-manager/) | Rust | Publish artifacts to Debian repos / Docker registries; promote between channels; verify; archive. | [README](release-manager/README.md) |
 | [`mina-ops/`](mina-ops/) | Rust | Read-only inventory across Buildkite, the Debian repos and the Docker registries, joined on the commit. CLI and JSON. | [README](mina-ops/README.md) |
 | [`mina-bench-upload/`](mina-bench-upload/) | Rust | Parse benchmark output (7 formats) and upload to InfluxDB with regression checks. | [README](mina-bench-upload/README.md) |
+| [`mina-json-bytes/`](mina-json-bytes/) | Rust | Carry token symbols and zkApp URIs that are not valid UTF-8 through `jq` with no change to the bytes. | [README](mina-json-bytes/README.md) |
 | [`buildkite-cache-manager/`](buildkite-cache-manager/) | Rust | Read/write/list/prune Buildkite CI cache on Hetzner shared storage. | [README](buildkite-cache-manager/README.md) |
 | [`deb-s3/`](deb-s3/) (submodule) | Ruby | Manage APT repositories on S3 (upload, delete, verify, repair). Forked from `krobertson/deb-s3`. | [README](deb-s3/README.md) |
 | [`dhall-buildkite/`](dhall-buildkite/) (submodule) | Dhall | Type-safe, composable Buildkite pipeline configs. | [README](dhall-buildkite/README.md) |
@@ -64,16 +65,17 @@ cd mina-release-toolkit
 # Or update submodules in an existing clone.
 git submodule update --init --recursive
 
-# Build the three local Rust tools.
+# Build the local Rust tools.
 (cd release-manager       && cargo build --release)
 (cd mina-bench-upload     && cargo build --release)
+(cd mina-json-bytes       && cargo build --release)
 (cd buildkite-cache-manager && cargo build --release)
 
 # deb-toolkit ships as a submodule; build it in-place.
 (cd deb-toolkit && cargo build --release)
 
 # Run all the Rust test suites.
-for crate in release-manager mina-bench-upload buildkite-cache-manager deb-toolkit; do
+for crate in release-manager mina-bench-upload mina-json-bytes buildkite-cache-manager deb-toolkit; do
     (cd "$crate" && cargo test) || break
 done
 ```
@@ -82,7 +84,7 @@ done
 
 | Need | For |
 | --- | --- |
-| Rust 1.70+ | `deb-toolkit`, `release-manager`, `mina-bench-upload`, `buildkite-cache-manager` |
+| Rust 1.70+ | `deb-toolkit`, `release-manager`, `mina-bench-upload`, `mina-json-bytes`, `buildkite-cache-manager` |
 | Ruby 2.7+ | `deb-s3` |
 | Dhall 1.40+ | `dhall-buildkite` |
 | `dpkg-deb`, `fakeroot`, `debsigs`, `debsig-verify`, `gpg` | `deb-toolkit` integration tests |
@@ -99,6 +101,7 @@ Each is path-filtered to its own directory:
 | `verify-artifacts.yml` | Sundays at 02:17 UTC, manual runs, and changes to `tests/infra/**` or the workflow |
 | `release-manager.yml` | `release-manager/**` |
 | `mina-bench-upload.yml` | `mina-bench-upload/**` |
+| `mina-json-bytes.yml` | `mina-json-bytes/**` |
 | `debian-repositories.yml`, `test-debian-repositories.yml`, `test-html-pages.yml` | `debian/**` |
 
 The `deb-toolkit` submodule has its own CI in its own repo.

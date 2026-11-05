@@ -3,7 +3,7 @@
   "license": "Apache-2.0",
   "package_authors": "Mina Protocol Build <build@minaprotocol.com>",
   "package_maintainer": "Mina Protocol Build <build@minaprotocol.com>",
-  "package_description": "Mina Release Toolkit — deb-toolkit, release-manager, mina-bench-upload, and buildkite-cache-manager bundled into one package.",
+  "package_description": "Mina Release Toolkit — deb-toolkit, release-manager, mina-bench-upload, mina-json-bytes, and buildkite-cache-manager bundled into one package.",
   "package_section": "utils",
   "package_priority": "optional",
   "package_homepage": "https://github.com/MinaProtocol/mina-release-toolkit",
@@ -24,6 +24,7 @@
   ],
   "recommended_depends": [
     "awscli",
-    "curl"
+    "curl",
+    "jq"
   ]
 }
