@@ -83,7 +83,6 @@ mkdir -p "${OUTPUT_DIR}"
     --output-dir  "${OUTPUT_DIR}" \
     --package-name mina-release-toolkit \
     --version     "${VERSION}" \
-    --suite       stable \
     --codename    bookworm \
     --architecture "${ARCH}" \
     --defaults-file "${REPO_ROOT}/packaging/defaults/toolkit.json"
