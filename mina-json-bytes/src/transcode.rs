@@ -3,7 +3,7 @@
 //! A mainnet response is about 700 MB, so the data goes through in chunks and
 //! only a short tail stays in memory between two reads.
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::token::Token;
 use std::io::{self, BufWriter, Read, Write};
 
@@ -52,7 +52,8 @@ fn safe_end(pending: &[u8], at_end: bool, tail: usize) -> usize {
     }
 }
 
-/// Replaces each byte that is not valid UTF-8 with a [`Token`].
+/// Replaces each byte that is not valid UTF-8 with a [`Token`], and escapes
+/// the text [`Token::PREFIX`] where the input already holds it.
 pub struct Encoder<W: Write> {
     writer: BufWriter<W>,
 }
@@ -70,35 +71,53 @@ impl<W: Write> Encoder<W> {
             .iter()
             .try_for_each(|&byte| Token::write(&mut self.writer, byte))
     }
-}
 
-impl<W: Write> Transcode for Encoder<W> {
-    fn convert(&mut self, pending: &[u8], at_end: bool) -> Result<usize> {
-        if Token::find_prefix(pending, 0).is_some() {
-            return Err(Error::PrefixInInput);
-        }
-        let end = safe_end(pending, at_end, Token::PREFIX.len() - 1);
+    /// Writes the valid UTF-8 of `text` as it is and each other byte as a
+    /// token, and returns the number of bytes it wrote. If `complete` is
+    /// false, a character cut at the end stays unwritten: a later read can
+    /// complete it.
+    fn write_text(&mut self, text: &[u8], complete: bool) -> io::Result<usize> {
         let mut position = 0;
-        while position < end {
-            let error = match std::str::from_utf8(&pending[position..end]) {
+        while position < text.len() {
+            let error = match std::str::from_utf8(&text[position..]) {
                 Ok(_) => {
-                    self.writer.write_all(&pending[position..end])?;
-                    return Ok(end);
+                    self.writer.write_all(&text[position..])?;
+                    return Ok(text.len());
                 }
                 Err(error) => error,
             };
             let valid_end = position + error.valid_up_to();
-            self.writer.write_all(&pending[position..valid_end])?;
+            self.writer.write_all(&text[position..valid_end])?;
             position = valid_end;
             let invalid_end = match error.error_len() {
                 Some(length) => position + length,
-                // A character is cut at the end. A later read can complete
-                // it, and at the end of the input it is invalid.
-                None if at_end => end,
+                None if complete => text.len(),
                 None => break,
             };
-            self.write_tokens(&pending[position..invalid_end])?;
+            self.write_tokens(&text[position..invalid_end])?;
             position = invalid_end;
+        }
+        Ok(position)
+    }
+}
+
+impl<W: Write> Transcode for Encoder<W> {
+    fn convert(&mut self, pending: &[u8], at_end: bool) -> Result<usize> {
+        // A prefix that starts before this end is complete in `pending`.
+        let end = safe_end(pending, at_end, Token::PREFIX.len() - 1);
+        let mut position = 0;
+        while position < end {
+            let prefix = Token::find_prefix(pending, position).filter(|&start| start < end);
+            let Some(start) = prefix else {
+                // A character cut at the end of the input is invalid.
+                return Ok(position + self.write_text(&pending[position..end], at_end)?);
+            };
+            // The prefix follows, so a character cut here is invalid.
+            self.write_text(&pending[position..start], true)?;
+            // The first byte of the prefix as a token. The decoder gives the
+            // byte back, and the text after it is no longer a prefix.
+            Token::write(&mut self.writer, Token::PREFIX.as_bytes()[0])?;
+            position = start + 1;
         }
         Ok(position)
     }
@@ -226,22 +245,50 @@ mod tests {
     }
 
     #[test]
-    fn encoder_rejects_the_prefix_in_the_input() {
-        let error = encoded(b"a __MINA_BYTE_ff__ b").unwrap_err();
-        assert!(matches!(error, Error::PrefixInInput));
+    fn encoder_escapes_the_prefix_in_the_input() {
+        let input = b"a __MINA_BYTE_ff__ b";
+        let output = encoded(input).unwrap();
+        assert_eq!(output, b"a __MINA_BYTE_5f___MINA_BYTE_ff__ b");
+        assert_eq!(decoded(&output), input);
         // Also without a complete token: it can join with a real token.
-        assert!(encoded(b"__MINA_BYTE_ff\xff").is_err());
+        let input = b"__MINA_BYTE_ff\xff";
+        assert_eq!(decoded(&encoded(input).unwrap()), input);
+    }
+
+    #[test]
+    fn encoder_escapes_each_of_overlapping_prefixes() {
+        // The last underscore of one prefix is the first of the next.
+        for input in [
+            &b"__MINA_BYTE__MINA_BYTE_"[..],
+            b"___MINA_BYTE_",
+            b"__MINA_BYTE___MINA_BYTE_ff__",
+            b"__MINA_BYTE_5f__",
+        ] {
+            let output = encoded(input).unwrap();
+            assert_eq!(decoded(&output), input, "input {input:?}");
+        }
     }
 
     #[test]
     fn encoder_finds_the_prefix_across_a_chunk_border() {
+        let input = b"abc__MINA_BYTE_def";
+        let output = encoded(input).unwrap();
+        assert_eq!(output, b"abc__MINA_BYTE_5f___MINA_BYTE_def");
         for size in 1..=Token::PREFIX.len() + 1 {
-            let reader = Trickle {
-                data: b"abc__MINA_BYTE_def",
-                size,
-            };
-            assert!(encoded_from(reader).is_err(), "read size {size}");
+            let reader = Trickle { data: input, size };
+            assert_eq!(encoded_from(reader).unwrap(), output, "read size {size}");
         }
+    }
+
+    #[test]
+    fn cut_character_before_a_prefix_is_invalid() {
+        let input = b"\xe2\x82__MINA_BYTE_";
+        let output = encoded(input).unwrap();
+        assert_eq!(
+            output,
+            b"__MINA_BYTE_e2____MINA_BYTE_82____MINA_BYTE_5f___MINA_BYTE_"
+        );
+        assert_eq!(decoded(&output), input);
     }
 
     #[test]
@@ -281,6 +328,8 @@ mod tests {
             b"__MINA",
             b"__MINA_BYTE",
             b"MINA_BYTE_",
+            b"__MINA_BYTE_",
+            b"__MINA_BYTE_ff__",
             b"ff",
             b"f",
             b"\xff",
@@ -304,10 +353,7 @@ mod tests {
             for _ in 0..next() % 12 {
                 input.extend_from_slice(parts[next() % parts.len()]);
             }
-            let Ok(output) = encoded(&input) else {
-                assert!(Token::find_prefix(&input, 0).is_some());
-                continue;
-            };
+            let output = encoded(&input).unwrap();
             assert!(std::str::from_utf8(&output).is_ok());
             assert_eq!(decoded(&output), input, "input {input:?}");
             for size in [1, 2, 3, 7] {
