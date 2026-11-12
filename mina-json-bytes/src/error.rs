@@ -1,6 +1,5 @@
 //! The errors of this tool.
 
-use crate::token::Token;
 use std::io;
 use std::path::PathBuf;
 
@@ -21,9 +20,6 @@ pub enum UsageError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// The encoder cannot keep this input apart from its own tokens.
-    #[error("the input already contains the text {}", Token::PREFIX)]
-    PrefixInInput,
     #[error("{}: {source}", path.display())]
     File { path: PathBuf, source: Box<Error> },
     #[error("cannot start jq: {0}")]

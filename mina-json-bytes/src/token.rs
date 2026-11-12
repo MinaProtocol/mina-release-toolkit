@@ -6,9 +6,9 @@ use std::io::{self, Write};
 pub(crate) struct Token;
 
 impl Token {
-    /// The start of each token. The encoder rejects an input with this text.
-    /// Without it in the input, only a real token can match in the decoder,
-    /// also where a token touches the text around it. So
+    /// The start of each token. Where the input holds this text, the encoder
+    /// writes its first byte as a token. So the encoded text holds the prefix
+    /// only at a token, or where a token touches the text around it, and
     /// `decode(encode(x)) == x`.
     pub(crate) const PREFIX: &'static str = "__MINA_BYTE_";
     const SUFFIX: &'static str = "__";

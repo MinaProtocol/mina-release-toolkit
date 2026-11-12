@@ -47,11 +47,18 @@ fn encode_then_decode_returns_the_input() {
     assert_eq!(decoded.stdout, LEDGER);
 }
 
+/// A zkApp URI is free text, so it can hold the text of a token.
+const URI_WITH_A_TOKEN: &[u8] =
+    b"[{\"pk\":\"B62c\",\"token_symbol\":\"\xff\",\"zkapp\":{\"zkapp_uri\":\"__MINA_BYTE_ff__\xff\"}}]";
+
 #[test]
-fn encode_fails_on_the_prefix_in_the_input() {
-    let output = run(&["encode"], b"\"__MINA_BYTE_ff__\"");
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr(&output).contains("__MINA_BYTE_"));
+fn encode_then_decode_keeps_the_text_of_a_token() {
+    let encoded = run(&["encode"], URI_WITH_A_TOKEN);
+    assert!(encoded.status.success(), "{}", stderr(&encoded));
+    assert!(std::str::from_utf8(&encoded.stdout).is_ok());
+    let decoded = run(&["decode"], &encoded.stdout);
+    assert!(decoded.status.success());
+    assert_eq!(decoded.stdout, URI_WITH_A_TOKEN);
 }
 
 #[test]
@@ -169,8 +176,8 @@ fn missing_slurpfile_is_a_failure() {
 }
 
 #[test]
-fn jq_fails_on_the_prefix_in_stdin() {
-    let output = run(&["jq", "."], b"\"__MINA_BYTE_ff__\"");
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr(&output).contains("__MINA_BYTE_"));
+fn jq_keeps_the_text_of_a_token() {
+    let output = run(&["jq", "-c", "."], URI_WITH_A_TOKEN);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(output.stdout.strip_suffix(b"\n").unwrap(), URI_WITH_A_TOKEN);
 }

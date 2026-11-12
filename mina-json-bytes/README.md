@@ -25,9 +25,11 @@ mina-json-bytes encode < ledger.json | some-text-tool | mina-json-bytes decode >
 ```
 
 `encode` replaces each byte that is not valid UTF-8 with the ASCII token
-`__MINA_BYTE_xx__` (`xx`: the byte in lower-case hex). `decode` replaces each
-token with its byte. All other bytes stay the same, so
-`decode(encode(x)) == x`.
+`__MINA_BYTE_xx__` (`xx`: the byte in lower-case hex). Where the input already
+holds the text `__MINA_BYTE_`, `encode` also writes the first `_` of it as the
+token `__MINA_BYTE_5f__`, so that `decode` cannot take that text for a token.
+`decode` replaces each token with its byte. All other bytes stay the same, so
+`decode(encode(x)) == x` for every input.
 
 ## Rules of the `jq` subcommand
 
@@ -52,8 +54,6 @@ mina-json-bytes jq 'del(.genesis)' < config.json > out.tmp && mv out.tmp out.jso
 
 ## Limits
 
-- `encode` stops with an error if the input contains the text `__MINA_BYTE_`.
-  Without this rule, `decode` could not tell that text from a token.
 - A jq filter sees the token and not the byte. For example, `length` or `test`
   on such a field gives a result for the token.
 - jq still changes the format of its output: whitespace, escapes such as
