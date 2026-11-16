@@ -27,7 +27,6 @@ pub async fn execute(args: PersistArgs) -> ManagerResult<()> {
         ("Artifacts", args.artifacts.as_str()),
         ("Buildkite build id", args.buildkite_build_id.as_str()),
         ("Codename", args.codename.as_str()),
-        ("Suite", args.suite.as_str()),
         ("Target", args.target.as_str()),
     ];
 
@@ -92,12 +91,11 @@ pub async fn execute(args: PersistArgs) -> ManagerResult<()> {
                 let mut cmd = Command::new("bash");
                 cmd.arg("-c")
                    .arg(format!(
-                       "reversion --deb {} --package {} --source-version {} --new-version {} --suite unstable --new-suite {} --new-name {}",
+                       "reversion --deb {} --package {} --source-version {} --new-version {} --new-name {}",
                        deb_path.display(),
                        artifact_full_name,
                        source_version,
                        new_version,
-                       args.suite,
                        artifact_full_name
                    ));
 

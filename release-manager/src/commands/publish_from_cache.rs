@@ -342,8 +342,6 @@ async fn publish_debian(
             &artifact_full_name,
             source_version,
             target_version,
-            "unstable",
-            channel,
             Some(new_name),
         )
         .await?;

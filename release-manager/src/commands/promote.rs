@@ -294,8 +294,6 @@ async fn promote_debian(
             &artifact_full_name,
             source_version,
             target_version,
-            source_channel,
-            target_channel,
             Some(&artifact_full_name),
         )
         .await?;
