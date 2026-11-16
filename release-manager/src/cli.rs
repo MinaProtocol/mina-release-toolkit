@@ -237,10 +237,6 @@ pub struct PersistArgs {
     #[arg(long)]
     pub new_version: Option<String>,
 
-    /// Suite for artifacts
-    #[arg(long, default_value = "unstable")]
-    pub suite: String,
-
     /// Enable debug mode to show external command execution
     #[arg(long)]
     pub debug: bool,
@@ -294,10 +290,6 @@ pub struct ReversionArgs {
     /// New version string (e.g. 3.0.0-rc1)
     #[arg(long)]
     pub new_version: String,
-
-    /// Replace the suite in the control file (e.g. stable, unstable)
-    #[arg(long)]
-    pub suite: Option<String>,
 
     /// Rename the package (e.g. mina-devnet-hardfork)
     #[arg(long)]

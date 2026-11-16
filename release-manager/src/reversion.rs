@@ -5,7 +5,12 @@ use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use tokio::process::Command as AsyncCommand;
 
-/// Configuration for Debian package reversion
+/// Configuration for Debian package reversion.
+///
+/// There is no channel here on purpose. A reversion changes only `Package`
+/// and `Version`; the channel is the apt component the package is published
+/// into, not part of the package. A package that carried its channel would
+/// get new bytes, and a new checksum, each time it moved to another channel.
 #[derive(Debug, Clone)]
 pub struct ReversionConfig {
     /// Path to the source .deb file
@@ -16,10 +21,6 @@ pub struct ReversionConfig {
     pub source_version: String,
     /// New version to reversion to
     pub new_version: String,
-    /// Current suite (e.g., "unstable")
-    pub suite: String,
-    /// New suite (e.g., "stable")
-    pub new_suite: String,
     /// New package name (if different from original)
     pub new_name: Option<String>,
 }
@@ -59,10 +60,6 @@ impl DebianReversioner {
                 .as_ref()
                 .unwrap_or(&self.config.package_name),
             self.config.new_version
-        );
-        println!(
-            "    📂 Suite: {} → {}",
-            self.config.suite, self.config.new_suite
         );
 
         // Extract the original package
@@ -162,9 +159,6 @@ impl DebianReversioner {
         // Write the modified control file
         fs::write(&control_file, new_content)?;
 
-        // Update changelog if it exists
-        self.update_changelog(extract_dir).await?;
-
         Ok(())
     }
 
@@ -199,17 +193,6 @@ impl DebianReversioner {
             }
         }
 
-        // Update distribution/suite in control file if present
-        let distribution_pattern = "Distribution: ";
-        if let Some(dist_start) = result.find(distribution_pattern) {
-            if let Some(dist_end) = result[dist_start..].find('\n') {
-                let dist_end = dist_start + dist_end;
-                let new_dist_line = format!("Distribution: {}", self.config.new_suite);
-                result.replace_range(dist_start..dist_end, &new_dist_line);
-                modified = true;
-            }
-        }
-
         if !modified {
             println!("    ⚠️  Warning: No modifications made to control file");
         }
@@ -230,80 +213,6 @@ impl DebianReversioner {
         }
 
         Ok(result)
-    }
-
-    /// Update changelog file if it exists
-    async fn update_changelog(&self, extract_dir: &Path) -> ManagerResult<()> {
-        let changelog_paths = [
-            extract_dir
-                .join("usr")
-                .join("share")
-                .join("doc")
-                .join(&self.config.package_name)
-                .join("changelog.Debian.gz"),
-            extract_dir
-                .join("usr")
-                .join("share")
-                .join("doc")
-                .join(&self.config.package_name)
-                .join("changelog.gz"),
-        ];
-
-        for changelog_path in &changelog_paths {
-            if changelog_path.exists() {
-                println!("    📝 Updating changelog: {}", changelog_path.display());
-                // For simplicity, we'll create a new changelog entry
-                // In a full implementation, you might want to decompress, modify, and recompress
-                self.create_changelog_entry(extract_dir).await?;
-                break;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Create a new changelog entry
-    async fn create_changelog_entry(&self, extract_dir: &Path) -> ManagerResult<()> {
-        let package_name = self
-            .config
-            .new_name
-            .as_ref()
-            .unwrap_or(&self.config.package_name);
-        let doc_dir = extract_dir
-            .join("usr")
-            .join("share")
-            .join("doc")
-            .join(package_name);
-
-        if let Err(e) = fs::create_dir_all(&doc_dir) {
-            println!("    ⚠️  Warning: Could not create doc directory: {}", e);
-            return Ok(());
-        }
-
-        let changelog_content = format!(
-            "{} ({}) {}; urgency=medium\n\n  * Reversion from {} to {}\n  * Automated reversion by release-manager\n\n -- Release Manager <release@minaprotocol.com>  {}\n\n",
-            package_name,
-            self.config.new_version,
-            self.config.new_suite,
-            self.config.source_version,
-            self.config.new_version,
-            chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S +0000")
-        );
-
-        let changelog_file = doc_dir.join("changelog.Debian");
-        if let Err(e) = fs::write(&changelog_file, changelog_content) {
-            println!("    ⚠️  Warning: Could not write changelog: {}", e);
-        }
-
-        // Compress the changelog
-        let mut cmd = AsyncCommand::new("gzip");
-        cmd.arg("-f").arg(&changelog_file);
-
-        if let Err(e) = cmd.output().await {
-            println!("    ⚠️  Warning: Could not compress changelog: {}", e);
-        }
-
-        Ok(())
     }
 
     /// Rebuild the package with new metadata
@@ -364,8 +273,6 @@ pub async fn reversion_debian_package(
     package_name: &str,
     source_version: &str,
     new_version: &str,
-    suite: &str,
-    new_suite: &str,
     new_name: Option<&str>,
 ) -> ManagerResult<PathBuf> {
     let config = ReversionConfig {
@@ -373,8 +280,6 @@ pub async fn reversion_debian_package(
         package_name: package_name.to_string(),
         source_version: source_version.to_string(),
         new_version: new_version.to_string(),
-        suite: suite.to_string(),
-        new_suite: new_suite.to_string(),
         new_name: new_name.map(|s| s.to_string()),
     };
 
@@ -395,8 +300,6 @@ mod tests {
             package_name: "test-package".to_string(),
             source_version: "1.0.0".to_string(),
             new_version: "1.0.1".to_string(),
-            suite: "unstable".to_string(),
-            new_suite: "stable".to_string(),
             new_name: None,
         };
 
@@ -412,8 +315,6 @@ mod tests {
             package_name: "test-package".to_string(),
             source_version: "1.0.0".to_string(),
             new_version: "1.0.1".to_string(),
-            suite: "unstable".to_string(),
-            new_suite: "stable".to_string(),
             new_name: Some("new-package".to_string()),
         };
 
@@ -442,6 +343,32 @@ Description: Test package
         );
     }
 
+    /// A reversion changes `Package` and `Version` only. Every other field,
+    /// `Suite` and `Distribution` included, stays as it is.
+    #[test]
+    fn test_control_content_keeps_every_other_field() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let config = ReversionConfig {
+            deb_path: temp_file.path().to_path_buf(),
+            package_name: "test-package".to_string(),
+            source_version: "1.0.0".to_string(),
+            new_version: "1.0.1".to_string(),
+            new_name: None,
+        };
+        let reversioner = DebianReversioner::new(config).unwrap();
+
+        let control_content = "Package: test-package\nVersion: 1.0.0\nSuite: unstable\n\
+                               Distribution: unstable\nArchitecture: amd64\n";
+
+        let updated = reversioner.update_control_content(control_content).unwrap();
+
+        assert_eq!(
+            updated,
+            "Package: test-package\nVersion: 1.0.1\nSuite: unstable\n\
+             Distribution: unstable\nArchitecture: amd64\n"
+        );
+    }
+
     #[test]
     fn test_invalid_deb_path() {
         let config = ReversionConfig {
@@ -449,8 +376,6 @@ Description: Test package
             package_name: "test-package".to_string(),
             source_version: "1.0.0".to_string(),
             new_version: "1.0.1".to_string(),
-            suite: "unstable".to_string(),
-            new_suite: "stable".to_string(),
             new_name: None,
         };
 

@@ -21,9 +21,6 @@ pub async fn execute(args: ReversionArgs) -> ManagerResult<()> {
     println!(" - Source folder: {}", args.source_folder);
     println!(" - Output folder: {}", args.output_folder);
     println!(" - New version: {}", args.new_version);
-    if let Some(s) = &args.suite {
-        println!(" - Suite: {}", s);
-    }
     if let Some(n) = &args.name {
         println!(" - Rename to: {}", n);
     }
@@ -84,14 +81,11 @@ pub async fn execute(args: ReversionArgs) -> ManagerResult<()> {
 
             // The internal reversion_debian_package writes alongside the source;
             // we then move into the requested output path.
-            let suite = args.suite.as_deref().unwrap_or("unstable");
             let result = reversion_debian_package(
                 &deb_path,
                 pkg_name,
                 pkg_version,
                 &args.new_version,
-                suite,
-                suite,
                 Some(final_name),
             )
             .await;
